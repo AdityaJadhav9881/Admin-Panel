@@ -1,16 +1,19 @@
 # HANDOFF — CampusMart AI Master Control (context for next session)
 
-_Last updated: 2026-10-15. Read this file first in a new session; it is the full state snapshot._
+_Last updated: 2026-10-15 (post-push of auth/agents/trust work). Read this file first in a new session; it is the full state snapshot._
 
 ## 1. Project
 
 - **Path**: `D:\Career_and_Life_Goals\Projects\p-20\Website 02`
-- **What it is**: "Master Control" — an AI-operations admin dashboard for the CampusMart campus marketplace. Git repo, remote `origin` = `https://github.com/AdityaJadhav9881/Admin-Panel.git` (branch `main`).
+- **What it is**: "Master Control" — an AI-operations admin dashboard for the CampusMart campus marketplace.
+- **Git**: remote `origin` = `https://github.com/AdityaJadhav9881/Admin-Panel.git` (branch `main`, tracking `origin/main`). Working tree clean after last session.
+  - `e83682e` Initial commit: CampusMart Master Control admin dashboard
+  - `4cd7a0d` Add admin login gate, fix agent normalization and trust score scale
 - **Stack**: React 19 + TypeScript ~6.0 + Vite 8 + Tailwind v4 (`@tailwindcss/vite`), linting via `oxlint` (`.oxlintrc.json`: `react/rules-of-hooks: error`, `react/only-export-components: warn`).
 - **tsconfig constraints**: `noUnusedLocals`, `noUnusedParameters`, `erasableSyntaxOnly` (no constructor parameter properties), `"types": ["vite/client"]`.
 - **Reference docs**: two philosophy `.txt` files in the project root (INFINITY DESIGN). Key principles applied throughout: neutral foundation, controlled accent, semantic color, progressive disclosure, no dead ends, honest data labelling (placeholder values are always labelled as such).
-- **Live mode (since 2026-10-15)**: `USE_MOCK_DATA = false` by default; the dashboard reads the FastAPI `/admin/*` contract. `.env` sets `VITE_API_BASE_URL=https://campusmart-api-zia4.onrender.com` (Render; `.env.example` also notes the local `http://127.0.0.1:8000` option). Mock seed arrays were deleted; only `PLACEHOLDER_SERVICES` (service-health rows, latency `null`) remains static and is labelled as not-yet-wired in the Settings view.
-- **Admin auth (since 2026-10-15)**: login gate via `POST /auth/login` (`{email, password}` → JWT). Token stored in `localStorage` (`campusmart_admin_token` / `campusmart_admin_email`); every `/admin/*` request sends `Authorization: Bearer <token>`. 401 clears the session and returns to the login screen. Demo helper on the login card fills `aditya.jadhav@campus.edu` / `password123` (still validated by the backend). Sign out button lives in the sidebar footer admin card.
+- **Live mode**: `USE_MOCK_DATA = false`; the dashboard reads the FastAPI contract on Render (`VITE_API_BASE_URL=https://campusmart-api-zia4.onrender.com` in `.env`; `.env` is gitignored, only `.env.example` is tracked). Mock seed arrays were deleted; only `PLACEHOLDER_SERVICES` (service-health rows, latency `null`) remains static and is labelled as not-yet-wired in the Settings view.
+- **Admin auth**: login gate via `POST /auth/login` (`{email, password}` → JWT). Token stored in `localStorage` (`campusmart_admin_token` / `campusmart_admin_email`); every `/admin/*` request sends `Authorization: Bearer <token>`. 401 clears the session and returns to the login screen. Demo helper on the login card fills `aditya.jadhav@campus.edu` / `password123` (still validated by the backend). Sign out button lives in the sidebar footer admin card.
 
 ## 2. Commands
 
@@ -91,19 +94,20 @@ npm run dev         # vite dev server
 - Overview: `{total_active_users, listings_today, flagged_count, recent_flags[]}` → `OverviewMetrics` + `FlaggedTransaction[]` (lenient recent-flag adapter; severity defaults from confidence ≥85).
 - All list fetchers go through `asArray` (bare array or `{data: []}` envelope) except agents (special dual-shape parser).
 
-## 6. Verification status (all passing as of 2026-10-15)
+## 6. Verification status (as of 2026-10-15 / commit `4cd7a0d`)
 
 - `npm run lint` clean (note: bootstrap effect must `await Promise.resolve()` before `loadData` or `react/set-state-in-effect` warns); `npm run build` clean (37 modules, ~290 kB JS / ~32 kB CSS).
-- Auth + agent normalization + trust-scale changes verified via lint/build only in this pass (not yet Playwright-verified against Render).
-- Playwright-verified **offline path** at 1440×920 (backend down): loading panel → "Live data unavailable" banner + Retry Connection, `Offline` chip, "Backend unreachable" sidebar label, banner persists after Retry; only console errors are the expected `ERR_CONNECTION_REFUSED` network logs. (Pre-auth-gate era; re-verify after login.)
-- Playwright-verified **live path** against a contract stand-in (node http server on 127.0.0.1:8000 with CORS + OPTIONS preflight, script was deleted after): Live API chip, overview metrics/queue from `/admin/overview`, Refresh data button, inspector open on live listing, Approve → toast + flagged tab count 2→1, agent toggle (paused fraud → resumed) → toast, **zero console/page errors**. (Pre-auth-gate era.)
+- Auth gate + agent dual-shape normalization + trust 0–5 scale: **lint/build verified only** in the last session — not yet Playwright-verified against the live Render API. Next session should smoke-test: login (demo fill + bad password), Sign out, agents "N of 3 active" from both payload shapes, trust bars on a 4.9 vs 3.1 user.
+- Playwright-verified **offline path** at 1440×920 (backend down, pre-auth-gate): loading panel → "Live data unavailable" banner + Retry Connection, `Offline` chip, "Backend unreachable" sidebar label, banner persists after Retry; only console errors are the expected `ERR_CONNECTION_REFUSED` network logs.
+- Playwright-verified **live path** against a local contract stand-in on `127.0.0.1:8000` with CORS + OPTIONS preflight (script deleted after; pre-auth-gate): Live API chip, overview metrics/queue from `/admin/overview`, Refresh data button, inspector open on live listing, Approve → toast + flagged tab count 2→1, agent toggle → toast, **zero console/page errors**.
 - Earlier (mock era) verifications still hold for pure presentation: mobile 390×844 stacked cards, no overflow, Escape/confirm-dialog layering, Open in Users prefill.
 
 ## 7. Next steps (suggested backlog — none started)
 
-1. Wire a service-health endpoint (e.g. `GET /admin/health`) to replace `PLACEHOLDER_SERVICES` and the "not wired" footers in Overview/Settings.
-2. Backend endpoint for flag acknowledgement (currently session-local in OverviewView).
-3. Optional: disable action buttons while `mutationInFlight` (guard already ignores double-clicks; UI just doesn't grey out).
-4. Consider focus-trap/aria-focus management in the drawer (Escape + close button work; no full trap yet).
-5. CORS: ensure the Render FastAPI app enables CORS for the dashboard origin(s) (`http://localhost:5273`, production host) — required for login + PATCH preflights.
-6. Optional UX: refresh token / longer sessions; show admin name from the login response if the backend returns it.
+1. Smoke-test auth + Render live path in the browser (login, Sign out, agent counts, 0–5 trust bars).
+2. Wire a service-health endpoint (e.g. `GET /admin/health`) to replace `PLACEHOLDER_SERVICES` and the "not wired" footers in Overview/Settings.
+3. Backend endpoint for flag acknowledgement (currently session-local in OverviewView).
+4. Optional: disable action buttons while `mutationInFlight` (guard already ignores double-clicks; UI just doesn't grey out).
+5. Consider focus-trap/aria-focus management in the drawer (Escape + close button work; no full trap yet).
+6. CORS: ensure the Render FastAPI app enables CORS for the dashboard origin(s) (`http://localhost:5273`, production host) — required for login + PATCH preflights.
+7. Optional UX: refresh token / longer sessions; show admin name from the login response if the backend returns it.
