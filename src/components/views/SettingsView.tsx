@@ -5,20 +5,25 @@ import { Badge } from '../ui/Badge'
 import { Panel } from '../ui/Panel'
 import { ServiceRow } from '../ui/ServiceRow'
 import { Toggle } from '../ui/Toggle'
+import type { ToastMessage } from '../ui/Toast'
+import { AiConfigPanel } from './AiConfigPanel'
 
 interface SettingsViewProps {
   agents: Agent[]
   services: Service[]
   onToggleAgent: (id: string) => void
+  onToast: (text: string, tone: ToastMessage['tone']) => void
 }
 
-export function SettingsView({ agents, services, onToggleAgent }: SettingsViewProps) {
+export function SettingsView({ agents, services, onToggleAgent, onToast }: SettingsViewProps) {
   const activeAgents = agents.filter((agent) => agent.enabled).length
   const allActive = activeAgents === agents.length
   const overall = overallServiceState(services)
 
   return (
     <div className="view-enter space-y-6">
+      <AiConfigPanel onToast={onToast} />
+
       <Panel
         title="AI agents"
         caption="Control which models run against live marketplace data. Toggles are saved on the backend immediately."

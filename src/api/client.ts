@@ -17,8 +17,12 @@
       GET    /admin/listings
       PATCH  /admin/listings/{product_id}/approve
       DELETE /admin/listings/{product_id}
-      GET    /admin/ai-agents       (dict of booleans or list of {key, enabled})
-      PATCH  /admin/ai-agents/{agent_key}   body: { enabled: boolean }
+       GET    /admin/ai-agents       (dict of booleans or list of {key, enabled})
+       PATCH  /admin/ai-agents/{agent_key}   body: { enabled: boolean }
+       GET    /admin/ai-config       -> { ai_provider, ai_model, ai_base_url,
+                                          has_api_key, masked_key }
+       PUT    /admin/ai-config       body: { ai_provider, ai_model, ai_api_key,
+                                             ai_base_url }
    ============================================================ */
 
 import type {
@@ -55,6 +59,7 @@ export const endpoints = {
   users: '/admin/users',
   listings: '/admin/listings',
   agents: '/admin/ai-agents',
+  aiConfig: '/admin/ai-config',
 } as const
 
 export class ApiError extends Error {
@@ -174,6 +179,12 @@ export const api = {
       body: body === undefined ? undefined : JSON.stringify(body),
     })
   },
+  put<T>(path: string, body?: unknown): Promise<T> {
+    return request<T>(path, {
+      method: 'PUT',
+      body: body === undefined ? undefined : JSON.stringify(body),
+    })
+  },
   remove<T>(path: string): Promise<T> {
     return request<T>(path, { method: 'DELETE' })
   },
@@ -249,6 +260,31 @@ export interface WireRecentFlag {
   acknowledged?: boolean
 }
 
+/** GET /admin/ai-config — the key itself is never returned, only its masked form. */
+export interface WireAiConfig {
+  ai_provider?: string | null
+  ai_model?: string | null
+  ai_base_url?: string | null
+  has_api_key?: boolean | null
+  masked_key?: string | null
+}
+
+/** PUT /admin/ai-config — an empty `ai_api_key` keeps the key already stored. */
+export interface AiConfigUpdate {
+  ai_provider: string
+  ai_model: string
+  ai_api_key?: string
+  ai_base_url?: string
+}
+
+export interface AiConfig {
+  ai_provider: string
+  ai_model: string
+  ai_base_url: string
+  has_api_key: boolean
+  masked_key: string | null
+}
+
 /* --- Adapters (wire shape -> view shape) -------------------- */
 
 /** Accepts a bare array or a `{ data: [...] }` envelope. */
@@ -259,6 +295,17 @@ function asArray<T>(payload: unknown): T[] {
     if (Array.isArray(data)) return data as T[]
   }
   return []
+}
+
+/** Accepts a bare object or a `{ data: {...} }` envelope. */
+function asRecord(payload: unknown): Record<string, unknown> {
+  if (payload === null || typeof payload !== 'object') return {}
+  const body = payload as Record<string, unknown>
+  const data = body.data
+  if (data !== null && typeof data === 'object' && !Array.isArray(data)) {
+    return data as Record<string, unknown>
+  }
+  return body
 }
 
 export function apiErrorMessage(error: unknown): string {
@@ -457,6 +504,22 @@ export function adaptOverview(wire: WireOverview): {
   }
 }
 
+/** GET/PUT /admin/ai-config payload -> view shape (key stays on the server). */
+export function adaptAiConfig(payload: unknown): AiConfig {
+  const source = asRecord(payload) as WireAiConfig
+  const maskedKey =
+    typeof source.masked_key === 'string' && source.masked_key.trim().length > 0
+      ? source.masked_key.trim()
+      : null
+  return {
+    ai_provider: typeof source.ai_provider === 'string' ? source.ai_provider.trim() : '',
+    ai_model: typeof source.ai_model === 'string' ? source.ai_model.trim() : '',
+    ai_base_url: typeof source.ai_base_url === 'string' ? source.ai_base_url.trim() : '',
+    has_api_key: source.has_api_key === true || maskedKey !== null,
+    masked_key: maskedKey,
+  }
+}
+
 /* --- Fetchers ------------------------------------------------ */
 
 export async function fetchOverview(): Promise<{
@@ -480,6 +543,10 @@ export async function fetchAgents(): Promise<Agent[]> {
   return adaptAgents(await api.get<unknown>(endpoints.agents))
 }
 
+export async function fetchAiConfig(): Promise<AiConfig> {
+  return adaptAiConfig(await api.get<unknown>(endpoints.aiConfig))
+}
+
 /* --- Mutations ---------------------------------------------- */
 
 export async function setUserStatus(userId: string, status: UserStatus): Promise<void> {
@@ -496,4 +563,14 @@ export async function removeListing(productId: string): Promise<void> {
 
 export async function setAgentEnabled(agentKey: string, enabled: boolean): Promise<void> {
   await api.patch(`${endpoints.agents}/${encodeURIComponent(agentKey)}`, { enabled })
+}
+
+/** PUT /admin/ai-config — returns the authoritative config the server stored. */
+export async function saveAiConfig(update: AiConfigUpdate): Promise<AiConfig> {
+  const payload = await api.put<unknown>(endpoints.aiConfig, update)
+  const body = asRecord(payload)
+  if ('ai_provider' in body || 'has_api_key' in body || 'masked_key' in body) {
+    return adaptAiConfig(body)
+  }
+  return fetchAiConfig()
 }

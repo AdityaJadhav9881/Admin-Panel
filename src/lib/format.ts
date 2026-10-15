@@ -8,8 +8,16 @@ export function initials(name: string): string {
     .join('')
 }
 
+/** Indian Rupee formatting with lakh/crore grouping — "₹1,24,500". */
 export function formatMoney(value: number): string {
-  return `$${value.toLocaleString('en-US')}`
+  if (!Number.isFinite(value)) return '₹0'
+  const amount = Number.isInteger(value)
+    ? value.toLocaleString('en-IN')
+    : value.toLocaleString('en-IN', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })
+  return `₹${amount}`
 }
 
 /** "2026-10-14T09:14:00Z" -> "14 Oct 2026". Returns the raw string when it cannot be parsed. */

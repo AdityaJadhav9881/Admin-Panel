@@ -473,6 +473,7 @@ export default function App() {
                   agents={agents}
                   services={services}
                   onToggleAgent={toggleAgent}
+                  onToast={showToast}
                 />
               )}
             </>

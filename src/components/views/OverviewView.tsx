@@ -11,6 +11,7 @@ import {
   stateLabel,
   stateTone,
 } from '../../data/mock'
+import { formatMoney } from '../../lib/format'
 import {
   AlertIcon,
   CheckIcon,
@@ -129,8 +130,8 @@ export function OverviewView({
                           {tx.reason}
                         </span>
                       </span>
-                      <span className="tabular hidden w-20 shrink-0 text-right text-[13.5px] font-medium text-ink sm:block">
-                        ${tx.amount}
+                      <span className="tabular hidden w-24 shrink-0 text-right text-[13.5px] font-medium text-ink sm:block">
+                        {formatMoney(tx.amount)}
                       </span>
                       <span className="flex shrink-0 justify-end sm:w-[116px]">
                         <Badge
