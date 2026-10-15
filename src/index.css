@@ -1,0 +1,150 @@
+@import 'tailwindcss';
+
+/* ============================================================
+   DESIGN TOKENS — Master Control
+   Neutral foundation + controlled accent + semantic states.
+   Every value below is the single source for the UI.
+   ============================================================ */
+@theme {
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    sans-serif;
+  --font-mono:
+    ui-monospace, 'SFMono-Regular', 'Cascadia Mono', 'Cascadia Code', Menlo, Consolas,
+    monospace;
+
+  /* Surfaces */
+  --color-canvas: #f4f6f9;
+  --color-surface: #ffffff;
+  --color-surface-2: #f8fafc;
+  --color-line: #e5e9ef;
+  --color-line-strong: #d3d9e3;
+
+  /* Ink */
+  --color-ink: #101828;
+  --color-ink-muted: #59657a;
+  --color-ink-faint: #6b7688;
+
+  /* Accent — interaction and focus only */
+  --color-brand: #1d4ed8;
+  --color-brand-strong: #1740b8;
+  --color-brand-soft: #eaf0ff;
+
+  /* Semantic states */
+  --color-success: #0f7b4f;
+  --color-success-soft: #e7f5ee;
+  --color-warning: #8f6106;
+  --color-warning-soft: #fcf3e0;
+  --color-critical: #c1352c;
+  --color-critical-soft: #fdecea;
+  --color-subtle: #eef1f5;
+
+  /* Navigation rail */
+  --color-rail: #0e1524;
+  --color-rail-2: #16203240;
+  --color-rail-line: #232d42;
+  --color-rail-ink: #e9edf5;
+  --color-rail-muted: #93a0b6;
+
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  /* Focus is always visible and never colour-only. */
+  :focus-visible {
+    outline: 2px solid var(--color-brand);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  ::selection {
+    background: var(--color-brand-soft);
+    color: var(--color-brand-strong);
+  }
+}
+
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* View transition: communicates "where the content came from". */
+@keyframes view-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.view-enter {
+  animation: view-enter 260ms var(--ease-out-soft) both;
+}
+
+@keyframes toast-enter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.toast-enter {
+  animation: toast-enter 220ms var(--ease-out-soft) both;
+}
+
+@keyframes drawer-enter {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: none;
+  }
+}
+
+.drawer-enter {
+  animation: drawer-enter 300ms var(--ease-out-soft) both;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.fade-in {
+  animation: fade-in 180ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
