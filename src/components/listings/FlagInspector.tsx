@@ -3,8 +3,10 @@ import type { Listing, User } from '../../data/mock'
 import {
   LISTING_DELETE_TRUST_PENALTY,
   categoryLabel,
+  formatTrustScore,
   priceDeviation,
   trustBand,
+  trustPercent,
 } from '../../data/mock'
 import { formatMoney, initials } from '../../lib/format'
 import { ArrowRightIcon, BanIcon, CheckIcon, CloseIcon, TrashIcon } from '../icons'
@@ -171,18 +173,18 @@ export function FlagInspector({
                   </div>
                   <div className="mt-1 flex items-center gap-2 whitespace-nowrap">
                     <span className="tabular text-[12.5px] text-ink-muted">
-                      Trust {seller.trustScore}
+                      Trust {formatTrustScore(seller.trustScore)}
                     </span>
                     <span className="h-1.5 w-16 overflow-hidden rounded-full bg-line">
                       <span
                         className={`block h-full rounded-full ${
-                          seller.trustScore >= 80
+                          trustBand(seller.trustScore).tone === 'success'
                             ? 'bg-success'
-                            : seller.trustScore >= 55
+                            : trustBand(seller.trustScore).tone === 'warning'
                               ? 'bg-warning'
                               : 'bg-critical'
                         }`}
-                        style={{ width: `${seller.trustScore}%` }}
+                        style={{ width: `${trustPercent(seller.trustScore)}%` }}
                       />
                     </span>
                     <span className="text-[12px] text-ink-muted">
@@ -228,7 +230,7 @@ export function FlagInspector({
               <p className="mt-2 text-[12px] text-ink-muted">Detected by {listing.flag.detectedBy}</p>
               {!fraudAgentEnabled && (
                 <p className="mt-2 border-t border-critical/20 pt-2 text-[12px] font-medium text-critical">
-                  Fraud Detection Agent is paused — this flag may be stale.
+                  Trust &amp; Fraud Detection Agent is paused — this flag may be stale.
                 </p>
               )}
             </section>

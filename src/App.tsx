@@ -1,16 +1,23 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   API_HOST,
+  ApiError,
   apiErrorMessage,
   approveListing as apiApproveListing,
+  clearAdminSession,
   fetchAgents,
   fetchListings,
   fetchOverview,
   fetchUsers,
+  loginAdmin,
+  persistAdminSession,
+  readAdminSession,
   removeListing,
   setUserStatus,
   setAgentEnabled,
+  type AdminSession,
 } from './api/client'
+import { LoginView } from './components/auth/LoginView'
 import { Sidebar } from './components/layout/Sidebar'
 import { Topbar } from './components/layout/Topbar'
 import { AlertIcon, RefreshIcon } from './components/icons'
@@ -59,6 +66,9 @@ const EMPTY_METRICS: OverviewMetrics = {
 }
 
 export default function App() {
+  /* --- Admin session (JWT gate) ----------------------------- */
+  const [session, setSession] = useState<AdminSession | null>(() => readAdminSession())
+
   /* --- View state ------------------------------------------- */
   const [view, setView] = useState<ViewId>('overview')
   const [navOpen, setNavOpen] = useState(false)
@@ -134,6 +144,15 @@ export default function App() {
         showToast('Live data loaded from the FastAPI service.', 'success')
       } catch (error) {
         if (seq !== loadSeq.current) return
+        // Expired/invalid JWT — drop back to the login gate instead of a dead shell.
+        if (error instanceof ApiError && error.status === 401) {
+          clearAdminSession()
+          setSession(null)
+          setBootstrapped(false)
+          setBackendConnected(false)
+          showToast('Session expired — sign in again to continue.', 'critical')
+          return
+        }
         setBackendConnected(false)
         setLoadError(apiErrorMessage(error))
         showToast(
@@ -153,12 +172,37 @@ export default function App() {
   )
 
   useEffect(() => {
+    if (!session) return
     void (async () => {
       // Yield first so the fetch starts outside the synchronous effect body.
       await Promise.resolve()
       await loadData({ initial: true })
     })()
-  }, [loadData])
+  }, [loadData, session])
+
+  const handleLogin = useCallback(async (email: string, password: string) => {
+    const next = await loginAdmin(email, password)
+    persistAdminSession(next)
+    setSession(next)
+  }, [])
+
+  const handleSignOut = useCallback(() => {
+    clearAdminSession()
+    setSession(null)
+    setView('overview')
+    setNavOpen(false)
+    setUsers([])
+    setListings([])
+    setQueue([])
+    setAgents([])
+    setMetrics(EMPTY_METRICS)
+    setUserQuery('')
+    setUserFilter('all')
+    setBackendConnected(false)
+    setBootstrapped(false)
+    setRefreshing(false)
+    setLoadError(null)
+  }, [])
 
   const navigate = (next: ViewId) => {
     setView(next)
@@ -294,7 +338,7 @@ export default function App() {
   const flaggedListings = listings.filter((listing) => listing.status === 'flagged').length
   const pausedAgents = agents.filter((agent) => !agent.enabled).length
   const fraudAgentEnabled =
-    agents.find((agent) => agent.id === 'fraud-detection')?.enabled ?? true
+    agents.find((agent) => agent.id === 'trust_fraud_detection')?.enabled ?? true
   const overall = overallServiceState(services)
   const issueCount = services.filter((service) => service.state !== 'operational').length
   const health = {
@@ -311,6 +355,15 @@ export default function App() {
       : `Backend unreachable · ${API_HOST}`,
   }
 
+  if (!session) {
+    return (
+      <div className="min-h-screen">
+        <LoginView onLogin={handleLogin} />
+        <Toast message={toast} />
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen">
       <Sidebar
@@ -322,6 +375,8 @@ export default function App() {
         flaggedListings={flaggedListings}
         pausedAgents={pausedAgents}
         backend={backend}
+        adminEmail={session.email}
+        onSignOut={handleSignOut}
       />
 
       <div className="lg:pl-[272px]">

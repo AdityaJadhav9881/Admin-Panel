@@ -254,3 +254,13 @@ export function RefreshIcon(props: IconProps) {
     </svg>
   )
 }
+
+export function SignOutIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M14 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-2" />
+      <path d="M10 12h10" />
+      <path d="m17 9 3 3-3 3" />
+    </svg>
+  )
+}

@@ -47,7 +47,7 @@ export function OverviewView({
   const pending = queue.filter((tx) => !tx.acknowledged)
   const highSeverity = pending.filter((tx) => tx.severity === 'high').length
   const activeAgents = agents.filter((agent) => agent.enabled).length
-  const fraudAgent = agents.find((agent) => agent.id === 'fraud-detection')
+  const fraudAgent = agents.find((agent) => agent.id === 'trust_fraud_detection')
   const overall = overallServiceState(services)
   const issueCount = services.filter((s) => s.state !== 'operational').length
 
@@ -90,7 +90,7 @@ export function OverviewView({
         <Panel
           id="flag-queue"
           title="Flagged transactions"
-          caption="Opened by the Fraud Detection Agent and buyer reports"
+          caption="Opened by the Trust & Fraud Detection Agent and buyer reports"
           action={
             <Badge tone={pending.length === 0 ? 'success' : 'critical'} withDot>
               {pending.length === 0 ? 'Clear' : `${pending.length} pending`}
@@ -202,7 +202,8 @@ export function OverviewView({
                 <AlertIcon size={16} />
               </span>
               <p className="text-[12.5px] leading-relaxed text-warning">
-                Fraud Detection Agent is paused — new transactions are not being flagged.
+                Trust &amp; Fraud Detection Agent is paused — new transactions are not being
+                flagged.
               </p>
             </div>
           )}

@@ -1,6 +1,14 @@
 import type { ComponentType } from 'react'
 import type { ViewId } from '../../data/mock'
-import { AgentsIcon, CloseIcon, OverviewIcon, ShieldIcon, TagIcon, UsersIcon } from '../icons'
+import {
+  AgentsIcon,
+  CloseIcon,
+  OverviewIcon,
+  ShieldIcon,
+  SignOutIcon,
+  TagIcon,
+  UsersIcon,
+} from '../icons'
 
 interface NavItem {
   id: ViewId
@@ -24,6 +32,8 @@ interface SidebarProps {
   flaggedListings: number
   pausedAgents: number
   backend: { connected: boolean; label: string }
+  adminEmail: string
+  onSignOut: () => void
 }
 
 export function Sidebar({
@@ -35,6 +45,8 @@ export function Sidebar({
   flaggedListings,
   pausedAgents,
   backend,
+  adminEmail,
+  onSignOut,
 }: SidebarProps) {
   const badges: Partial<Record<ViewId, { count: number; className: string }>> = {
     overview: flaggedCount > 0 ? { count: flaggedCount, className: 'bg-critical-soft text-critical' } : undefined,
@@ -121,14 +133,35 @@ export function Sidebar({
         </nav>
 
         <div className="mt-auto border-t border-rail-line p-4">
-          <div className="flex items-center gap-3 rounded-lg bg-white/[0.04] p-3">
-            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-brand/20 text-[#9db9ff]">
-              <ShieldIcon size={18} />
-            </span>
-            <div className="min-w-0">
-              <p className="truncate text-[13px] font-medium text-rail-ink">CampusMart Admin</p>
-              <p className="text-[11.5px] text-rail-muted">Super Admin</p>
+          <div className="rounded-lg bg-white/[0.04] p-3">
+            <div className="flex items-center gap-3">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-brand/20 text-[#9db9ff]">
+                <ShieldIcon size={18} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[13px] font-medium text-rail-ink">
+                  CampusMart Admin
+                </p>
+                <p className="truncate text-[11.5px] text-rail-muted">Super Admin</p>
+              </div>
             </div>
+            {adminEmail && (
+              <p
+                className="mt-2 truncate px-1 text-[11.5px] text-rail-muted"
+                title={adminEmail}
+              >
+                {adminEmail}
+              </p>
+            )}
+            <button
+              type="button"
+              onClick={onSignOut}
+              aria-label="Sign out of the admin dashboard"
+              className="mt-2.5 flex h-8 w-full items-center justify-center gap-2 rounded-lg border border-rail-line text-[12.5px] font-medium text-rail-muted transition-colors hover:border-[#3a4660] hover:bg-white/[0.06] hover:text-rail-ink"
+            >
+              <SignOutIcon size={14} />
+              Sign out
+            </button>
           </div>
           <p className="mt-3 flex items-center gap-2 px-1 text-[11.5px] text-rail-muted">
             <span

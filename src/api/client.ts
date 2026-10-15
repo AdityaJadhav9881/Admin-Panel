@@ -10,14 +10,15 @@
    "Retry Connection" button and keeps the last snapshot.
 
    Endpoints wired to the FastAPI admin contract:
-     GET    /admin/overview
-     GET    /admin/users
-     PATCH  /admin/users/{user_id}/status
-     GET    /admin/listings
-     PATCH  /admin/listings/{product_id}/approve
-     DELETE /admin/listings/{product_id}
-     GET    /admin/ai-agents
-     PATCH  /admin/ai-agents/{agent_key}
+      POST   /auth/login            (JWT; token stored in localStorage)
+      GET    /admin/overview
+      GET    /admin/users
+      PATCH  /admin/users/{user_id}/status
+      GET    /admin/listings
+      PATCH  /admin/listings/{product_id}/approve
+      DELETE /admin/listings/{product_id}
+      GET    /admin/ai-agents       (dict of booleans or list of {key, enabled})
+      PATCH  /admin/ai-agents/{agent_key}   body: { enabled: boolean }
    ============================================================ */
 
 import type {
@@ -49,6 +50,7 @@ export const API_HOST: string = (() => {
 })()
 
 export const endpoints = {
+  login: '/auth/login',
   overview: '/admin/overview',
   users: '/admin/users',
   listings: '/admin/listings',
@@ -65,11 +67,73 @@ export class ApiError extends Error {
   }
 }
 
+/* --- Admin auth (JWT in localStorage) ------------------------ */
+
+const TOKEN_STORAGE_KEY = 'campusmart_admin_token'
+const EMAIL_STORAGE_KEY = 'campusmart_admin_email'
+
+export interface AdminSession {
+  token: string
+  email: string
+}
+
+export function getAuthToken(): string | null {
+  try {
+    return window.localStorage.getItem(TOKEN_STORAGE_KEY)
+  } catch {
+    return null
+  }
+}
+
+export function readAdminSession(): AdminSession | null {
+  try {
+    const token = window.localStorage.getItem(TOKEN_STORAGE_KEY)
+    if (!token) return null
+    const email = window.localStorage.getItem(EMAIL_STORAGE_KEY) ?? ''
+    return { token, email }
+  } catch {
+    return null
+  }
+}
+
+export function persistAdminSession(session: AdminSession): void {
+  try {
+    window.localStorage.setItem(TOKEN_STORAGE_KEY, session.token)
+    window.localStorage.setItem(EMAIL_STORAGE_KEY, session.email)
+  } catch {
+    /* storage blocked — the session lasts until the tab closes */
+  }
+}
+
+export function clearAdminSession(): void {
+  try {
+    window.localStorage.removeItem(TOKEN_STORAGE_KEY)
+    window.localStorage.removeItem(EMAIL_STORAGE_KEY)
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Accepts `{access_token|token|jwt}` at the top level or nested under `data`. */
+function extractToken(payload: unknown): string | null {
+  if (payload === null || typeof payload !== 'object') return null
+  const body = payload as Record<string, unknown>
+  for (const key of ['access_token', 'token', 'jwt', 'accessToken']) {
+    const value = body[key]
+    if (typeof value === 'string' && value.length > 0) return value
+  }
+  return extractToken(body.data)
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const url = `${API_BASE_URL}${path}`
   const headers = new Headers(init?.headers)
   headers.set('Accept', 'application/json')
   if (init?.body !== undefined) headers.set('Content-Type', 'application/json')
+  if (path.startsWith('/admin')) {
+    const token = getAuthToken()
+    if (token) headers.set('Authorization', `Bearer ${token}`)
+  }
 
   let response: Response
   try {
@@ -82,10 +146,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   if (!response.ok) {
-    throw new ApiError(
-      response.status,
-      `${response.status} ${response.statusText} while requesting ${path}`,
-    )
+    const message =
+      response.status === 401
+        ? 'Your admin session has expired or the credentials were rejected. Sign in again.'
+        : `${response.status} ${response.statusText} while requesting ${path}`
+    throw new ApiError(response.status, message)
   }
 
   if (response.status === 204) return undefined as T
@@ -112,6 +177,16 @@ export const api = {
   remove<T>(path: string): Promise<T> {
     return request<T>(path, { method: 'DELETE' })
   },
+}
+
+/** POST /auth/login — returns a session whose JWT is persisted by the caller. */
+export async function loginAdmin(email: string, password: string): Promise<AdminSession> {
+  const payload = await api.post<unknown>(endpoints.login, { email, password })
+  const token = extractToken(payload)
+  if (!token) {
+    throw new ApiError(0, 'Login reached the server but no access token was returned.')
+  }
+  return { token, email }
 }
 
 /* --- Wire types (FastAPI admin contract, snake_case) -------- */
@@ -293,6 +368,55 @@ export function adaptAgent(wire: WireAgent): Agent {
   }
 }
 
+type AgentRuntimeState = { key: string; enabled: boolean }
+
+/**
+ * The backend may return either:
+ *   - a dict of booleans `{ "listing_intelligence": true, ... }`
+ *   - a list of `{ key, enabled }` items (optionally under `{ data: [] }`)
+ */
+function parseAgentRuntime(payload: unknown): AgentRuntimeState[] {
+  if (Array.isArray(payload)) {
+    const rows: AgentRuntimeState[] = []
+    for (const item of payload) {
+      if (item === null || typeof item !== 'object') continue
+      const row = item as Record<string, unknown>
+      const key = String(row.key ?? row.id ?? row.name ?? '').trim()
+      if (!key) continue
+      rows.push({ key, enabled: row.enabled !== false })
+    }
+    return rows
+  }
+  if (payload !== null && typeof payload === 'object') {
+    const envelope = payload as Record<string, unknown>
+    if (envelope.data !== undefined) return parseAgentRuntime(envelope.data)
+    if (envelope.agents !== undefined) return parseAgentRuntime(envelope.agents)
+    const entries = Object.entries(envelope)
+    if (entries.length > 0 && entries.every(([, value]) => typeof value === 'boolean')) {
+      return entries.map(([key, enabled]) => ({ key, enabled: enabled as boolean }))
+    }
+  }
+  return []
+}
+
+/**
+ * Always yields the three core agents (catalog metadata) merged with whatever
+ * runtime state the server returned, so the UI never shows "0 of 0 active".
+ */
+export function adaptAgents(payload: unknown): Agent[] {
+  const runtime = parseAgentRuntime(payload)
+  const enabledByKey = new Map(runtime.map((row) => [row.key, row.enabled]))
+  const agents: Agent[] = AGENT_CATALOG.map((catalogAgent) => ({
+    ...catalogAgent,
+    enabled: enabledByKey.get(catalogAgent.id) ?? catalogAgent.enabled,
+  }))
+  for (const row of runtime) {
+    if (AGENT_CATALOG.some((catalogAgent) => catalogAgent.id === row.key)) continue
+    agents.push(adaptAgent({ key: row.key, enabled: row.enabled }))
+  }
+  return agents
+}
+
 function adaptRecentFlag(wire: WireRecentFlag, index: number): FlaggedTransaction {
   const confidence = Number(wire.confidence ?? 0)
   const rawSeverity = (wire.severity ?? '').toLowerCase()
@@ -353,8 +477,7 @@ export async function fetchListings(): Promise<Listing[]> {
 }
 
 export async function fetchAgents(): Promise<Agent[]> {
-  const payload = await api.get<unknown>(endpoints.agents)
-  return asArray<WireAgent>(payload).map(adaptAgent)
+  return adaptAgents(await api.get<unknown>(endpoints.agents))
 }
 
 /* --- Mutations ---------------------------------------------- */

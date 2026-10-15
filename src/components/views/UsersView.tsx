@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { User } from '../../data/mock'
-import { trustBand } from '../../data/mock'
+import { formatTrustScore, trustBand, trustPercent } from '../../data/mock'
 import { initials } from '../../lib/format'
 import { SearchIcon } from '../icons'
 import { Badge } from '../ui/Badge'
@@ -169,13 +169,13 @@ export function UsersView({
 
                     <div className="mt-4 flex items-center justify-between gap-4">
                       <div className="flex min-w-0 flex-1 items-center gap-2.5">
-                        <span className="tabular w-6 text-[13px] font-medium text-ink">
-                          {user.trustScore}
+                        <span className="tabular w-8 text-[13px] font-medium text-ink">
+                          {formatTrustScore(user.trustScore)}
                         </span>
                         <span className="h-1.5 w-16 overflow-hidden rounded-full bg-line">
                           <span
                             className={`block h-full rounded-full ${BAR_TONES[band.tone]}`}
-                            style={{ width: `${user.trustScore}%` }}
+                            style={{ width: `${trustPercent(user.trustScore)}%` }}
                           />
                         </span>
                         <span className="text-[12px] text-ink-muted">{band.label}</span>
@@ -246,16 +246,16 @@ export function UsersView({
                       <td className="px-5 py-3.5 text-[13px] text-ink-muted">{user.email}</td>
                       <td className="px-5 py-3.5">
                         <div className="flex items-center gap-2.5">
-                          <span className="tabular w-6 text-[13px] font-medium text-ink">
-                            {user.trustScore}
+                          <span className="tabular w-8 text-[13px] font-medium text-ink">
+                            {formatTrustScore(user.trustScore)}
                           </span>
                           <span className="h-1.5 w-20 overflow-hidden rounded-full bg-line">
                             <span
                               className={`block h-full rounded-full ${BAR_TONES[band.tone]}`}
-                              style={{ width: `${user.trustScore}%` }}
+                              style={{ width: `${trustPercent(user.trustScore)}%` }}
                             />
                           </span>
-                          <span className="w-11 text-[12px] text-ink-muted">{band.label}</span>
+                          <span className="w-16 text-[12px] text-ink-muted">{band.label}</span>
                         </div>
                       </td>
                       <td className="px-5 py-3.5">

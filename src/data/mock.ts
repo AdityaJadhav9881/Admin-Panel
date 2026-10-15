@@ -60,34 +60,22 @@ export interface OverviewMetrics {
 /* --- AI agent catalogue (names/descriptions for display) ---- */
 export const AGENT_CATALOG: Agent[] = [
   {
-    id: 'price-prediction',
+    id: 'listing_intelligence',
+    name: 'Listing Intelligence Agent',
+    description: 'YOLOv8 + Vision — Auto-categorization & specs',
+    enabled: true,
+  },
+  {
+    id: 'price_prediction',
     name: 'Price Prediction Agent',
-    description: 'Suggests a fair price range when sellers create a listing.',
+    description: 'Scikit-learn Regressor — Fair campus resale pricing',
     enabled: true,
   },
   {
-    id: 'listing-moderation',
-    name: 'Listing Moderation Agent',
-    description: 'Screens images and text against campus marketplace policy.',
+    id: 'trust_fraud_detection',
+    name: 'Trust & Fraud Detection Agent',
+    description: 'LangGraph Guard — Anomaly & scam detection',
     enabled: true,
-  },
-  {
-    id: 'fraud-detection',
-    name: 'Fraud Detection Agent',
-    description: 'Scores transactions and opens items in the flag queue.',
-    enabled: true,
-  },
-  {
-    id: 'search-ranking',
-    name: 'Search Ranking Agent',
-    description: 'Orders search results by relevance and seller trust.',
-    enabled: true,
-  },
-  {
-    id: 'demand-forecast',
-    name: 'Demand Forecast Agent',
-    description: 'Forecasts category demand for the weekly seller digest.',
-    enabled: false,
   },
 ]
 
@@ -144,13 +132,27 @@ export const stateLabel: Record<ServiceState, string> = {
   unavailable: 'Unavailable',
 }
 
+/** Postgres stores trust_score on a 0.0–5.0 scale. */
+export const TRUST_SCALE_MAX = 5.0
+
 export function trustBand(score: number): {
   label: string
   tone: 'success' | 'warning' | 'critical'
 } {
-  if (score >= 80) return { label: 'Strong', tone: 'success' }
-  if (score >= 55) return { label: 'Fair', tone: 'warning' }
+  if (score >= 4.0) return { label: 'High', tone: 'success' }
+  if (score >= 2.5) return { label: 'Moderate', tone: 'warning' }
   return { label: 'Low', tone: 'critical' }
+}
+
+/** Bar-fill percentage for a 0.0–5.0 trust score, clamped to 0–100. */
+export function trustPercent(score: number): number {
+  if (!Number.isFinite(score)) return 0
+  return Math.min(100, Math.max(0, (score / TRUST_SCALE_MAX) * 100))
+}
+
+/** "4.9" / "3.05" → "4.9" / "3.1" for consistent table display. */
+export function formatTrustScore(score: number): string {
+  return Number.isFinite(score) ? score.toFixed(1) : '—'
 }
 
 export function overallServiceState(services: Service[]): ServiceState {
@@ -193,8 +195,8 @@ export interface Listing {
   flag: ListingFlag | null
 }
 
-/** Trust-score cost applied to the seller when a listing is deleted. */
-export const LISTING_DELETE_TRUST_PENALTY = 8
+/** Trust-score cost applied to the seller when a listing is deleted (0–5 scale). */
+export const LISTING_DELETE_TRUST_PENALTY = 0.5
 
 export const categoryLabel: Record<ListingCategory, string> = {
   textbooks: 'Textbooks',

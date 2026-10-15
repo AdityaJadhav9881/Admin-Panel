@@ -1,6 +1,11 @@
 import { useState } from 'react'
 import type { Listing, User } from '../../data/mock'
-import { LISTING_DELETE_TRUST_PENALTY, categoryLabel, priceDeviation } from '../../data/mock'
+import {
+  LISTING_DELETE_TRUST_PENALTY,
+  categoryLabel,
+  formatTrustScore,
+  priceDeviation,
+} from '../../data/mock'
 import { formatMoney, initials } from '../../lib/format'
 import { FlagInspector } from '../listings/FlagInspector'
 import { ListingThumb } from '../listings/ListingThumb'
@@ -251,7 +256,7 @@ export function ListingsView({
                                 {seller?.name ?? 'Unknown seller'}
                               </p>
                               <p className="text-[11.5px] text-ink-muted">
-                                Trust {seller?.trustScore ?? '—'}
+                                Trust {seller ? formatTrustScore(seller.trustScore) : '—'}
                                 {seller?.status === 'blocked' && (
                                   <span className="text-critical"> · Blocked</span>
                                 )}
@@ -341,7 +346,7 @@ export function ListingsView({
               title={`Delete “${confirm.listing.title}”?`}
               body={
                 seller && after !== null
-                  ? `The listing is removed from CampusMart. ${seller.name} loses ${LISTING_DELETE_TRUST_PENALTY} points of trust score (${seller.trustScore} → ${after}). This cannot be undone.`
+                  ? `The listing is removed from CampusMart. ${seller.name} loses ${LISTING_DELETE_TRUST_PENALTY} points of trust score (${formatTrustScore(seller.trustScore)} → ${formatTrustScore(after)}). This cannot be undone.`
                   : 'The listing is removed from CampusMart. This cannot be undone.'
               }
               confirmLabel="Delete listing"
