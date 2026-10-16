@@ -138,6 +138,20 @@
   animation: fade-in 180ms ease-out both;
 }
 
+/* Indeterminate sweep for the Render cold-start progress bar. */
+@keyframes warm-sweep {
+  0% {
+    transform: translateX(-110%);
+  }
+  100% {
+    transform: translateX(320%);
+  }
+}
+
+.warm-sweep {
+  animation: warm-sweep 1.7s var(--ease-out-soft) infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

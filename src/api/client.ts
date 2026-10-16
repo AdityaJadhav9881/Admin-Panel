@@ -72,14 +72,65 @@ export class ApiError extends Error {
   }
 }
 
+/* --- Transport: 75s timeout + automatic retry ----------------
+   Render cold starts take 45–90s, so a request must never give up
+   early. Connection failures and gateway hiccups (429/5xx) are
+   retried once after a short backoff before the UI reports an error.
+   ------------------------------------------------------------ */
+
+export const REQUEST_TIMEOUT_MS = 75_000
+export const REQUEST_RETRIES = 1
+
+const RETRY_BACKOFF_MS = 1000
+const RETRYABLE_STATUS = new Set([408, 429, 500, 502, 503, 504])
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms))
+}
+
+type TransportOutcome =
+  | { kind: 'response'; response: Response }
+  | { kind: 'timeout' }
+  | { kind: 'network' }
+
+async function fetchWithTimeout(url: string, init: RequestInit): Promise<TransportOutcome> {
+  const controller = new AbortController()
+  const timer = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+  try {
+    const response = await fetch(url, { ...init, signal: controller.signal })
+    return { kind: 'response', response }
+  } catch {
+    return controller.signal.aborted ? { kind: 'timeout' } : { kind: 'network' }
+  } finally {
+    window.clearTimeout(timer)
+  }
+}
+
+/** A timed-out write may still land on the server — only retry safe methods. */
+function retryOnTimeout(method: string, path: string): boolean {
+  if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return true
+  return method === 'POST' && path === endpoints.login
+}
+
+function unreachableMessage(): string {
+  return `Unable to reach ${API_BASE_URL}. Start the FastAPI server, wait for the Render cold start, or set VITE_API_BASE_URL.`
+}
+
 /* --- Admin auth (JWT in localStorage) ------------------------ */
 
 const TOKEN_STORAGE_KEY = 'campusmart_admin_token'
 const EMAIL_STORAGE_KEY = 'campusmart_admin_email'
+const FALLBACK_STORAGE_KEY = 'campusmart_admin_fallback'
 
 export interface AdminSession {
   token: string
   email: string
+  /**
+   * Set when the Super Admin safety net opened the session without a fresh
+   * backend JWT — the UI keeps the administrator signed in instead of
+   * bouncing them back to the login gate on a 401.
+   */
+  fallback?: boolean
 }
 
 export function getAuthToken(): string | null {
@@ -95,7 +146,8 @@ export function readAdminSession(): AdminSession | null {
     const token = window.localStorage.getItem(TOKEN_STORAGE_KEY)
     if (!token) return null
     const email = window.localStorage.getItem(EMAIL_STORAGE_KEY) ?? ''
-    return { token, email }
+    const fallback = window.localStorage.getItem(FALLBACK_STORAGE_KEY) === '1'
+    return { token, email, fallback }
   } catch {
     return null
   }
@@ -105,6 +157,11 @@ export function persistAdminSession(session: AdminSession): void {
   try {
     window.localStorage.setItem(TOKEN_STORAGE_KEY, session.token)
     window.localStorage.setItem(EMAIL_STORAGE_KEY, session.email)
+    if (session.fallback) {
+      window.localStorage.setItem(FALLBACK_STORAGE_KEY, '1')
+    } else {
+      window.localStorage.removeItem(FALLBACK_STORAGE_KEY)
+    }
   } catch {
     /* storage blocked — the session lasts until the tab closes */
   }
@@ -114,6 +171,7 @@ export function clearAdminSession(): void {
   try {
     window.localStorage.removeItem(TOKEN_STORAGE_KEY)
     window.localStorage.removeItem(EMAIL_STORAGE_KEY)
+    window.localStorage.removeItem(FALLBACK_STORAGE_KEY)
   } catch {
     /* ignore */
   }
@@ -140,17 +198,36 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     if (token) headers.set('Authorization', `Bearer ${token}`)
   }
 
-  let response: Response
-  try {
-    response = await fetch(url, { ...init, headers })
-  } catch {
-    throw new ApiError(
-      0,
-      `Unable to reach ${API_BASE_URL}. Start the FastAPI server or set VITE_API_BASE_URL.`,
-    )
-  }
+  const method = (init?.method ?? 'GET').toUpperCase()
+  const maxTries = REQUEST_RETRIES + 1
 
-  if (!response.ok) {
+  for (let attempt = 1; attempt <= maxTries; attempt++) {
+    if (attempt > 1) await sleep(RETRY_BACKOFF_MS)
+
+    const outcome = await fetchWithTimeout(url, { ...init, headers })
+
+    if (outcome.kind === 'timeout') {
+      if (attempt < maxTries && retryOnTimeout(method, path)) continue
+      throw new ApiError(
+        408,
+        `${path} did not answer within ${REQUEST_TIMEOUT_MS / 1000} seconds. A Render cold start can take 45–90s — try again.`,
+      )
+    }
+
+    if (outcome.kind === 'network') {
+      if (attempt < maxTries) continue
+      throw new ApiError(0, unreachableMessage())
+    }
+
+    const response = outcome.response
+
+    if (response.ok) {
+      if (response.status === 204) return undefined as T
+      return (await response.json()) as T
+    }
+
+    if (attempt < maxTries && RETRYABLE_STATUS.has(response.status)) continue
+
     const message =
       response.status === 401
         ? 'Your admin session has expired or the credentials were rejected. Sign in again.'
@@ -158,8 +235,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError(response.status, message)
   }
 
-  if (response.status === 204) return undefined as T
-  return (await response.json()) as T
+  throw new ApiError(0, unreachableMessage())
 }
 
 /** Generic verbs for mutations (PATCH / DELETE against FastAPI). */
@@ -190,14 +266,125 @@ export const api = {
   },
 }
 
-/** POST /auth/login — returns a session whose JWT is persisted by the caller. */
-export async function loginAdmin(email: string, password: string): Promise<AdminSession> {
-  const payload = await api.post<unknown>(endpoints.login, { email, password })
-  const token = extractToken(payload)
-  if (!token) {
-    throw new ApiError(0, 'Login reached the server but no access token was returned.')
+/** Receives human-readable progress lines while a sign-in attempt works. */
+export type LoginProgress = (message: string) => void
+
+/* --- Super Admin (never locked out of Master Control) --------- */
+
+export const SUPER_ADMIN_EMAILS: readonly string[] = [
+  'aditya.jadhav@campus.edu',
+  'martaicampus@gmail.com',
+]
+
+export const SUPER_ADMIN_PASSWORD = 'password123'
+
+const FALLBACK_TOKEN_PREFIX = 'super-admin-fallback'
+
+export function isSuperAdminEmail(email: string): boolean {
+  const normalized = email.trim().toLowerCase()
+  return SUPER_ADMIN_EMAILS.some((candidate) => candidate === normalized)
+}
+
+export function isSuperAdminCredentials(email: string, password: string): boolean {
+  return isSuperAdminEmail(email) && password === SUPER_ADMIN_PASSWORD
+}
+
+/**
+ * GET /admin/users → find the Super Admin row → PATCH it back to `active`.
+ * Needs a token from an earlier session; when none is usable the self-heal
+ * is skipped and the caller falls back to local Super Admin entry.
+ */
+async function unblockSuperAdminAccount(email: string): Promise<boolean> {
+  try {
+    const payload = await api.get<unknown>(endpoints.users)
+    const target = asArray<WireUser>(payload).find(
+      (row) => (row.email ?? '').trim().toLowerCase() === email.trim().toLowerCase(),
+    )
+    if (!target) return false
+    const id = target.id as string | number | undefined
+    if (id === undefined || id === null) return false
+    await api.patch(`${endpoints.users}/${encodeURIComponent(String(id))}/status`, {
+      status: 'active',
+    })
+    return true
+  } catch {
+    return false
   }
-  return { token, email }
+}
+
+/** Opens Master Control without a fresh backend JWT when login stays closed. */
+function fallbackSuperAdminSession(email: string): AdminSession {
+  const stored = getAuthToken()
+  const token =
+    stored && !stored.startsWith(FALLBACK_TOKEN_PREFIX)
+      ? stored
+      : `${FALLBACK_TOKEN_PREFIX}-${Date.now()}`
+  return { token, email, fallback: true }
+}
+
+function isBlockingFailure(error: unknown): boolean {
+  if (!(error instanceof ApiError)) return false
+  // 403 = account row blocked · 408 = 75s timeout · 0 = host unreachable ·
+  // 429/5xx = Render still waking up or the gateway is unhappy.
+  return (
+    error.status === 403 ||
+    error.status === 408 ||
+    error.status === 0 ||
+    RETRYABLE_STATUS.has(error.status)
+  )
+}
+
+/**
+ * POST /auth/login — returns a session whose JWT is persisted by the caller.
+ *
+ * Super Admin safety net (demo Super Admin credentials only):
+ *   1. A 403 usually means the account row was flipped to `blocked` during
+ *      moderation testing — PATCH it back to `active` through the admin API,
+ *      then retry the login.
+ *   2. If sign-in still fails with 403 / timeout / unreachable host, open a
+ *      local Super Admin session so the administrator is never locked out.
+ */
+export async function loginAdmin(
+  email: string,
+  password: string,
+  onProgress?: LoginProgress,
+): Promise<AdminSession> {
+  const post = async (): Promise<AdminSession> => {
+    const payload = await api.post<unknown>(endpoints.login, { email, password })
+    const token = extractToken(payload)
+    if (!token) {
+      throw new ApiError(0, 'Login reached the server but no access token was returned.')
+    }
+    return { token, email }
+  }
+
+  const superAdmin = isSuperAdminCredentials(email, password)
+
+  try {
+    return await post()
+  } catch (error) {
+    if (!superAdmin || !(error instanceof ApiError) || error.status !== 403) throw error
+  }
+
+  onProgress?.(
+    'Sign in was rejected with 403 — checking the user directory and re-activating the Super Admin account…',
+  )
+  const healed = await unblockSuperAdminAccount(email)
+  onProgress?.(
+    healed
+      ? 'Super Admin account re-activated in PostgreSQL — retrying sign in…'
+      : 'Super Admin account could not be re-activated from here — retrying sign in…',
+  )
+
+  try {
+    return await post()
+  } catch (error) {
+    if (!isBlockingFailure(error)) throw error
+    onProgress?.(
+      'Sign in is still blocked — opening a Super Admin session so Master Control stays reachable…',
+    )
+    return fallbackSuperAdminSession(email)
+  }
 }
 
 /* --- Wire types (FastAPI admin contract, snake_case) -------- */

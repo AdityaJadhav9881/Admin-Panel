@@ -1,13 +1,15 @@
-import { useState, type FormEvent } from 'react'
-import { apiErrorMessage } from '../../api/client'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { apiErrorMessage, type LoginProgress } from '../../api/client'
 import { AlertIcon, ShieldIcon } from '../icons'
 import { Button } from '../ui/Button'
+import { ConnectingBox } from '../ui/ConnectingBox'
 
 const DEMO_EMAIL = 'aditya.jadhav@campus.edu'
 const DEMO_PASSWORD = 'password123'
+const SLOW_NOTICE_MS = 2000
 
 interface LoginViewProps {
-  onLogin: (email: string, password: string) => Promise<void>
+  onLogin: (email: string, password: string, onProgress: LoginProgress) => Promise<void>
 }
 
 export function LoginView({ onLogin }: LoginViewProps) {
@@ -15,6 +17,15 @@ export function LoginView({ onLogin }: LoginViewProps) {
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [slow, setSlow] = useState(false)
+  const [progress, setProgress] = useState<string | null>(null)
+  const slowTimer = useRef<number | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (slowTimer.current !== null) window.clearTimeout(slowTimer.current)
+    }
+  }, [])
 
   const fillDemo = () => {
     setEmail(DEMO_EMAIL)
@@ -31,14 +42,27 @@ export function LoginView({ onLogin }: LoginViewProps) {
       return
     }
     setError(null)
+    setProgress(null)
+    setSlow(false)
     setSubmitting(true)
+    if (slowTimer.current !== null) window.clearTimeout(slowTimer.current)
+    slowTimer.current = window.setTimeout(() => setSlow(true), SLOW_NOTICE_MS)
     try {
-      await onLogin(trimmedEmail, password)
+      await onLogin(trimmedEmail, password, setProgress)
     } catch (err) {
       setError(apiErrorMessage(err))
+    } finally {
+      if (slowTimer.current !== null) {
+        window.clearTimeout(slowTimer.current)
+        slowTimer.current = null
+      }
+      setSlow(false)
+      setProgress(null)
       setSubmitting(false)
     }
   }
+
+  const showWarmup = submitting && (slow || progress !== null)
 
   return (
     <div className="view-enter grid min-h-screen place-items-center bg-rail px-5 py-10">
@@ -130,6 +154,12 @@ export function LoginView({ onLogin }: LoginViewProps) {
               {submitting ? 'Signing in…' : 'Sign in'}
             </Button>
           </form>
+
+          {showWarmup && (
+            <div className="mt-4">
+              <ConnectingBox detail={progress} />
+            </div>
+          )}
 
           <div className="mt-4 rounded-lg border border-line bg-surface-2 px-3 py-3">
             <p className="text-[12px] font-medium text-ink">Client evaluation</p>

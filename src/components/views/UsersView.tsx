@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { isSuperAdminEmail } from '../../api/client'
 import type { User } from '../../data/mock'
 import { formatTrustScore, trustBand, trustPercent } from '../../data/mock'
 import { initials } from '../../lib/format'
@@ -58,6 +59,8 @@ export function UsersView({
   })
 
   const requestToggle = (user: User) => {
+    // Super Admin can be unblocked but never blocked — the dashboard must stay reachable.
+    if (isSuperAdminEmail(user.email) && user.status === 'active') return
     if (user.status === 'active') setPendingBlock(user)
     else onToggleStatus(user)
   }
@@ -140,6 +143,7 @@ export function UsersView({
               {visible.map((user) => {
                 const band = trustBand(user.trustScore)
                 const blocked = user.status === 'blocked'
+                const protectedAdmin = isSuperAdminEmail(user.email)
                 return (
                   <li
                     key={user.id}
@@ -161,6 +165,11 @@ export function UsersView({
                           </Badge>
                         </div>
                         <p className="truncate text-[12.5px] text-ink-muted">{user.email}</p>
+                        {protectedAdmin && (
+                          <p className="mt-1.5">
+                            <Badge tone="brand">Super Admin (Protected)</Badge>
+                          </p>
+                        )}
                         <p className="mt-0.5 text-[12px] text-ink-faint">
                           {user.listings} listings · joined {user.joined}
                         </p>
@@ -184,6 +193,12 @@ export function UsersView({
                         variant={blocked ? 'outline' : 'danger-quiet'}
                         className="min-w-[92px]"
                         aria-label={blocked ? `Unblock ${user.name}` : `Block ${user.name}`}
+                        disabled={protectedAdmin && !blocked}
+                        title={
+                          protectedAdmin && !blocked
+                            ? 'Super Admin accounts cannot be blocked.'
+                            : undefined
+                        }
                         onClick={() => requestToggle(user)}
                       >
                         {blocked ? 'Unblock' : 'Block'}
@@ -215,6 +230,7 @@ export function UsersView({
                 {visible.map((user) => {
                   const band = trustBand(user.trustScore)
                   const blocked = user.status === 'blocked'
+                  const protectedAdmin = isSuperAdminEmail(user.email)
                   return (
                     <tr
                       key={user.id}
@@ -259,9 +275,12 @@ export function UsersView({
                         </div>
                       </td>
                       <td className="px-5 py-3.5">
-                        <Badge tone={blocked ? 'critical' : 'success'} withDot>
-                          {blocked ? 'Blocked' : 'Active'}
-                        </Badge>
+                        <div className="flex flex-col items-start gap-1.5">
+                          <Badge tone={blocked ? 'critical' : 'success'} withDot>
+                            {blocked ? 'Blocked' : 'Active'}
+                          </Badge>
+                          {protectedAdmin && <Badge tone="brand">Super Admin (Protected)</Badge>}
+                        </div>
                       </td>
                       <td className="px-5 py-3.5">
                         <div className="flex justify-end">
@@ -270,6 +289,12 @@ export function UsersView({
                             className="min-w-[92px]"
                             aria-label={
                               blocked ? `Unblock ${user.name}` : `Block ${user.name}`
+                            }
+                            disabled={protectedAdmin && !blocked}
+                            title={
+                              protectedAdmin && !blocked
+                                ? 'Super Admin accounts cannot be blocked.'
+                                : undefined
                             }
                             onClick={() => requestToggle(user)}
                           >

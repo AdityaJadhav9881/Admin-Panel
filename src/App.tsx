@@ -9,6 +9,7 @@ import {
   fetchListings,
   fetchOverview,
   fetchUsers,
+  isSuperAdminEmail,
   loginAdmin,
   persistAdminSession,
   readAdminSession,
@@ -16,12 +17,14 @@ import {
   setUserStatus,
   setAgentEnabled,
   type AdminSession,
+  type LoginProgress,
 } from './api/client'
 import { LoginView } from './components/auth/LoginView'
 import { Sidebar } from './components/layout/Sidebar'
 import { Topbar } from './components/layout/Topbar'
 import { AlertIcon, RefreshIcon } from './components/icons'
 import { Button } from './components/ui/Button'
+import { ConnectingBox } from './components/ui/ConnectingBox'
 import { Toast, type ToastMessage } from './components/ui/Toast'
 import { ListingsView } from './components/views/ListingsView'
 import { OverviewView } from './components/views/OverviewView'
@@ -65,6 +68,11 @@ const EMPTY_METRICS: OverviewMetrics = {
   flaggedCount: 0,
 }
 
+/** How long a request may run in silence before the cold-start box appears. */
+const WARM_NOTICE_MS = 2000
+
+const PROTECTED_ADMIN_NOTICE = 'Super Admin (Protected) — this account cannot be blocked.'
+
 export default function App() {
   /* --- Admin session (JWT gate) ----------------------------- */
   const [session, setSession] = useState<AdminSession | null>(() => readAdminSession())
@@ -90,7 +98,10 @@ export default function App() {
   const [bootstrapped, setBootstrapped] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
+  /** True while a request has been silent for >2s — Render cold-start mode. */
+  const [warming, setWarming] = useState(false)
   const loadSeq = useRef(0)
+  const warmTimer = useRef<number | null>(null)
 
   /* --- Confirmation feedback -------------------------------- */
   const [toast, setToast] = useState<ToastMessage | null>(null)
@@ -102,7 +113,10 @@ export default function App() {
     document.body.style.position = ''
     document.body.style.top = ''
     document.body.style.width = ''
-    return () => window.clearTimeout(toastTimer.current ?? undefined)
+    return () => {
+      window.clearTimeout(toastTimer.current ?? undefined)
+      if (warmTimer.current !== null) window.clearTimeout(warmTimer.current)
+    }
   }, [])
 
   const showToast = useCallback((text: string, tone: ToastMessage['tone']) => {
@@ -119,6 +133,11 @@ export default function App() {
       // The initial load renders the loading panel via `bootstrapped`; only
       // manual refreshes need the refreshing flag (avoid sync setState in effects).
       if (!initial) setRefreshing(true)
+      // Cold-start watch: after 2s of silence explain the Render wake-up
+      // instead of leaving a silent spinner on screen.
+      if (warmTimer.current !== null) window.clearTimeout(warmTimer.current)
+      setWarming(false)
+      warmTimer.current = window.setTimeout(() => setWarming(true), WARM_NOTICE_MS)
 
       try {
         const [overview, liveUsers, liveListings, liveAgents] = await Promise.all([
@@ -146,6 +165,15 @@ export default function App() {
         if (seq !== loadSeq.current) return
         // Expired/invalid JWT — drop back to the login gate instead of a dead shell.
         if (error instanceof ApiError && error.status === 401) {
+          if (session?.fallback) {
+            // Super Admin fallback session: stay signed in, report the failure.
+            setBackendConnected(false)
+            setLoadError(
+              'Super Admin fallback session: the backend rejected the stored token, so live data cannot load. Sign in again once POST /auth/login accepts the account.',
+            )
+            showToast('Fallback session active — live data is unavailable.', 'warning')
+            return
+          }
           clearAdminSession()
           setSession(null)
           setBootstrapped(false)
@@ -163,12 +191,17 @@ export default function App() {
         )
       } finally {
         if (seq === loadSeq.current) {
+          if (warmTimer.current !== null) {
+            window.clearTimeout(warmTimer.current)
+            warmTimer.current = null
+          }
+          setWarming(false)
           setRefreshing(false)
           setBootstrapped(true)
         }
       }
     },
-    [showToast],
+    [session, showToast],
   )
 
   useEffect(() => {
@@ -180,11 +213,20 @@ export default function App() {
     })()
   }, [loadData, session])
 
-  const handleLogin = useCallback(async (email: string, password: string) => {
-    const next = await loginAdmin(email, password)
-    persistAdminSession(next)
-    setSession(next)
-  }, [])
+  const handleLogin = useCallback(
+    async (email: string, password: string, onProgress?: LoginProgress) => {
+      const next = await loginAdmin(email, password, onProgress)
+      persistAdminSession(next)
+      if (next.fallback) {
+        showToast(
+          'Super Admin fallback session opened — Master Control stays reachable without a backend JWT.',
+          'warning',
+        )
+      }
+      setSession(next)
+    },
+    [showToast],
+  )
 
   const handleSignOut = useCallback(() => {
     clearAdminSession()
@@ -202,6 +244,11 @@ export default function App() {
     setBootstrapped(false)
     setRefreshing(false)
     setLoadError(null)
+    if (warmTimer.current !== null) {
+      window.clearTimeout(warmTimer.current)
+      warmTimer.current = null
+    }
+    setWarming(false)
   }, [])
 
   const navigate = (next: ViewId) => {
@@ -228,6 +275,10 @@ export default function App() {
   /* --- User actions (PATCH /admin/users/{id}/status) --------- */
   const toggleUserStatus = (user: User) => {
     const next: UserStatus = user.status === 'active' ? 'blocked' : 'active'
+    if (next === 'blocked' && isSuperAdminEmail(user.email)) {
+      showToast(PROTECTED_ADMIN_NOTICE, 'warning')
+      return
+    }
     void withMutation(async () => {
       await setUserStatus(user.id, next)
       setUsers((prev) =>
@@ -291,6 +342,10 @@ export default function App() {
     const seller = users.find((user) => user.id === listing.sellerId)
     if (!seller) {
       showToast('Unavailable — no account found for this seller.', 'warning')
+      return
+    }
+    if (isSuperAdminEmail(seller.email)) {
+      showToast(PROTECTED_ADMIN_NOTICE, 'warning')
       return
     }
     void withMutation(async () => {
@@ -416,17 +471,29 @@ export default function App() {
             </div>
           )}
 
+          {bootstrapped && warming && (
+            <div className="mb-6">
+              <ConnectingBox />
+            </div>
+          )}
+
           {!bootstrapped ? (
             <div className="grid min-h-[50vh] place-items-center rounded-xl border border-line bg-surface shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
-              <div className="px-6 text-center">
-                <span className="mx-auto block h-8 w-8 animate-spin rounded-full border-2 border-line border-t-brand" />
-                <p className="mt-4 text-[14px] font-semibold text-ink">
-                  Connecting to the FastAPI service…
-                </p>
-                <p className="mt-1 text-[13px] text-ink-muted">
-                  Loading users, listings, agents and the flag queue from {API_HOST}.
-                </p>
-              </div>
+              {warming ? (
+                <div className="w-full max-w-[620px] px-5 py-6 sm:px-6">
+                  <ConnectingBox />
+                </div>
+              ) : (
+                <div className="px-6 text-center">
+                  <span className="mx-auto block h-8 w-8 animate-spin rounded-full border-2 border-line border-t-brand" />
+                  <p className="mt-4 text-[14px] font-semibold text-ink">
+                    Connecting to the FastAPI service…
+                  </p>
+                  <p className="mt-1 text-[13px] text-ink-muted">
+                    Loading users, listings, agents and the flag queue from {API_HOST}.
+                  </p>
+                </div>
+              )}
             </div>
           ) : (
             <>
