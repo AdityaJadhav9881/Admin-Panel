@@ -111,20 +111,16 @@ npm run dev         # vite dev server
 - Overview: `{total_active_users, listings_today, flagged_count, recent_flags[]}` → `OverviewMetrics` + `FlaggedTransaction[]` (lenient recent-flag adapter; severity defaults from confidence ≥85).
 - All list fetchers go through `asArray` (bare array or `{data: []}` envelope) except agents (special dual-shape parser).
 
-## 6. Verification status (as of 2026-10-16 / commit `05e5e4e`)
+## 6. Verification status (as of 2026-10-16 / AI Config Diagnostics & Moderation Upgrade)
 
-- `npm run lint` clean (note: bootstrap effect must `await Promise.resolve()` before `loadData` or `react/set-state-in-effect` warns); `npm run build` clean (**39 modules**, ~305 kB JS / ~33 kB CSS).
-- Dev-server smoke check passed: `/` (contains "Master Control") plus `/src/App.tsx`, `LoginView.tsx`, `ConnectingBox.tsx`, `UsersView.tsx`, `index.css` all transform with HTTP 200.
-- **Lint/build + dev-server smoke only** for this session's work — not yet Playwright-verified: super-admin 403 self-heal (`GET /admin/users` → `PATCH …/status` → retry login), fallback session entry, 75s timeout/retry, `ConnectingBox` after 2s, `Super Admin (Protected)` badge + disabled Block button. Next session should test exactly those, plus login (demo fill + bad password) and Sign out.
-- Still true from earlier sessions: Playwright **offline path** (banner + Retry, `Offline` chip, "Backend unreachable", only expected `ERR_CONNECTION_REFUSED` logs); Playwright **live path** against a local contract stand-in with CORS + OPTIONS preflight (zero console/page errors); mobile 390×844 stacked cards, Escape/confirm-dialog layering, Open in Users prefill.
+- `npm run lint` clean: `oxlint` found 0 warnings and 0 errors across 29 files.
+- `npm run build` clean: `tsc -b && vite build` built in 2.26s (41 modules, 344 kB JS / 40.5 kB CSS).
+- Task 1: AI Config Panel input whitespace/newline sanitization, verified production model presets (Gemini 2.5 Flash, 2.0 Flash, 1.5 Flash/Pro, OpenAI GPT-4o mini/4o, Groq Llama 4 Scout, OpenRouter), live connection diagnostic test button against `/ai/chat` with latency and ₹ valuation preview.
+- Task 2: Listings & Moderation view upgraded with real-time multi-field search (title, seller, category, AI tags), category filter pills, CSV export download, and 4-photo inspector drawer with interactive zoom lightbox (+ / - / reset / prev / next) and one-click "Approve / Clear Flag" and "Remove Listing".
+- Task 3: User Directory upgraded with 0.0–5.0 trust scores (`4.9 / 5.0`), color-coded progress bars, clickable `mailto:` links, Super Admin protection for `martaicampus@gmail.com` and `admin@campusmart.in`. Overview updated with Marketplace Value Summary (total GMV in ₹, avg AI fair value in ₹, category distribution). Sidebar updated with support mailto link.
 
-## 7. Next steps (suggested backlog — none started)
+## 7. Next steps
 
-1. Smoke-test in the browser: super-admin 403 self-heal, fallback session entry, `ConnectingBox` cold-start copy, `Super Admin (Protected)` badge/button, Sign out, agent counts, 0–5 trust bars.
-2. Wire a service-health endpoint (e.g. `GET /admin/health`) to replace `PLACEHOLDER_SERVICES` and the "not wired" footers in Overview/Settings.
-3. Backend endpoint for flag acknowledgement (currently session-local in OverviewView).
-4. Optional: disable action buttons while `mutationInFlight` (guard already ignores double-clicks; UI just doesn't grey out).
-5. Consider focus-trap/aria-focus management in the drawer (Escape + close button work; no full trap yet).
-6. CORS: ensure the Render FastAPI app enables CORS for the dashboard origin(s) (`http://localhost:5273`, production host) — required for login + PATCH preflights **and for the self-heal `GET /admin/users`/`PATCH …/status` calls**.
-7. Optional UX: refresh token / longer sessions; show admin name from the login response if the backend returns it.
-8. Backend: keep the super-admin row `active` (or add an explicit `is_super_admin` guard server-side) so a block can never be re-applied behind the dashboard's back.
+1. Continue monitoring Render backend deployment sync for `/admin/ai-config`.
+2. Push changes to GitHub (`origin/main`) so Vercel deploys immediately.
+

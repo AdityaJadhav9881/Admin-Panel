@@ -182,6 +182,15 @@ export function Sidebar({
             />
             {backend.label}
           </p>
+          <p className="mt-1.5 px-1 text-[11px]">
+            <a
+              href="mailto:martaicampus@gmail.com?subject=CampusMart%20Admin%20Support"
+              className="text-rail-muted hover:text-rail-ink transition-colors block truncate"
+              title="Contact Master Control Support"
+            >
+              Support: martaicampus@gmail.com
+            </a>
+          </p>
         </div>
       </aside>
     </>

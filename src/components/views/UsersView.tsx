@@ -165,7 +165,13 @@ export function UsersView({
                             {blocked ? 'Blocked' : 'Active'}
                           </Badge>
                         </div>
-                        <p className="truncate text-[12.5px] text-ink-muted">{user.email}</p>
+                        <a
+                          href={`mailto:${user.email}?subject=CampusMart%20Student%20Account%20Notice`}
+                          className="block truncate text-[12.5px] text-ink-muted hover:text-brand hover:underline"
+                          title={`Email ${user.name}`}
+                        >
+                          {user.email}
+                        </a>
                         {protectedAdmin && (
                           <p className="mt-1.5">
                             <Badge tone="brand">
@@ -181,8 +187,8 @@ export function UsersView({
 
                     <div className="mt-4 flex items-center justify-between gap-4">
                       <div className="flex min-w-0 flex-1 items-center gap-2.5">
-                        <span className="tabular w-8 text-[13px] font-medium text-ink">
-                          {formatTrustScore(user.trustScore)}
+                        <span className="tabular text-[13px] font-medium text-ink whitespace-nowrap">
+                          {formatTrustScore(user.trustScore)} / 5.0
                         </span>
                         <span className="h-1.5 w-16 overflow-hidden rounded-full bg-line">
                           <span
@@ -263,11 +269,19 @@ export function UsersView({
                           </span>
                         </div>
                       </td>
-                      <td className="px-5 py-3.5 text-[13px] text-ink-muted">{user.email}</td>
+                      <td className="px-5 py-3.5 text-[13px]">
+                        <a
+                          href={`mailto:${user.email}?subject=CampusMart%20Student%20Account%20Notice`}
+                          className="text-ink-muted hover:text-brand hover:underline"
+                          title={`Email ${user.name}`}
+                        >
+                          {user.email}
+                        </a>
+                      </td>
                       <td className="px-5 py-3.5">
                         <div className="flex items-center gap-2.5">
-                          <span className="tabular w-8 text-[13px] font-medium text-ink">
-                            {formatTrustScore(user.trustScore)}
+                          <span className="tabular text-[13px] font-medium text-ink whitespace-nowrap">
+                            {formatTrustScore(user.trustScore)} / 5.0
                           </span>
                           <span className="h-1.5 w-20 overflow-hidden rounded-full bg-line">
                             <span

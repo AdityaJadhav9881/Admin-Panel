@@ -52,7 +52,8 @@ export function FlagInspector({
   onBanSeller,
   onOpenSeller,
 }: FlagInspectorProps) {
-  const [activePhoto, setActivePhoto] = useState<string | null>(null)
+  const [activePhotoIndex, setActivePhotoIndex] = useState<number | null>(null)
+  const [zoomLevel, setZoomLevel] = useState<number>(1)
   const lightboxOpen = useRef(false)
 
   useEffect(() => {
@@ -62,7 +63,8 @@ export function FlagInspector({
       // Escape closes the top-most layer only: photo lightbox, then confirm dialog, then drawer.
       if (lightboxOpen.current) {
         lightboxOpen.current = false
-        setActivePhoto(null)
+        setActivePhotoIndex(null)
+        setZoomLevel(1)
         return
       }
       const confirmOpen = document.querySelector('[data-confirm]')
@@ -164,7 +166,8 @@ export function FlagInspector({
                     index={index}
                     onOpen={() => {
                       lightboxOpen.current = true
-                      setActivePhoto(url)
+                      setActivePhotoIndex(index)
+                      setZoomLevel(1)
                     }}
                   />
                 ))}
@@ -355,7 +358,7 @@ export function FlagInspector({
             onClick={() => onApprove(listing)}
           >
             <CheckIcon size={15} />
-            Approve listing
+            Approve / Clear Flag
           </Button>
           <div className="grid grid-cols-2 gap-2.5">
             <Button
@@ -364,7 +367,7 @@ export function FlagInspector({
               onClick={() => onDelete(listing)}
             >
               <TrashIcon size={15} />
-              Delete
+              Remove Listing
             </Button>
             <Button
               variant="danger-quiet"
@@ -384,41 +387,129 @@ export function FlagInspector({
         </footer>
       </div>
 
-      {/* Full-size photo viewer — sits above the drawer */}
-      {activePhoto && (
+      {/* Full-size interactive zoom photo viewer — sits above the drawer */}
+      {activePhotoIndex !== null && listing.imageUrls[activePhotoIndex] && (
         <div
-          className="fade-in absolute inset-0 z-[65] grid place-items-center bg-ink/75 p-5"
+          className="fade-in absolute inset-0 z-[65] grid place-items-center bg-ink/80 p-4 sm:p-6"
           onClick={() => {
             lightboxOpen.current = false
-            setActivePhoto(null)
+            setActivePhotoIndex(null)
+            setZoomLevel(1)
           }}
           role="presentation"
         >
           <div
-            className="w-full max-w-[420px] overflow-hidden rounded-xl border border-white/15 bg-ink shadow-[0_24px_48px_-16px_rgba(0,0,0,0.6)]"
+            className="flex flex-col w-full max-w-[500px] overflow-hidden rounded-2xl border border-white/20 bg-ink shadow-[0_24px_48px_-16px_rgba(0,0,0,0.7)]"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-2.5">
-              <p className="min-w-0 truncate font-mono text-[12px] text-white/80">
-                {listing.id}
-              </p>
-              <button
-                type="button"
-                aria-label="Close photo viewer"
-                onClick={() => {
-                  lightboxOpen.current = false
-                  setActivePhoto(null)
-                }}
-                className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-white/80 transition-colors hover:bg-white/10 hover:text-white"
-              >
-                <CloseIcon size={16} />
-              </button>
+            <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3 bg-white/5">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="truncate font-mono text-[12px] font-medium text-white/90">
+                  {listing.id}
+                </span>
+                <span className="text-[12px] text-white/50">·</span>
+                <span className="shrink-0 text-[12px] font-medium text-white/80">
+                  Photo {activePhotoIndex + 1} of {Math.min(listing.imageUrls.length, PHOTO_GALLERY_MAX)}
+                </span>
+              </div>
+
+              {/* Zoom controls & close */}
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  title="Zoom out"
+                  disabled={zoomLevel <= 1}
+                  onClick={() => setZoomLevel((z) => Math.max(1, +(z - 0.5).toFixed(1)))}
+                  className="grid h-7 w-7 place-items-center rounded border border-white/10 text-white/80 transition-colors hover:bg-white/10 disabled:opacity-40"
+                >
+                  -
+                </button>
+                <span className="tabular font-mono text-[11px] text-white/70 w-9 text-center">
+                  {Math.round(zoomLevel * 100)}%
+                </span>
+                <button
+                  type="button"
+                  title="Zoom in"
+                  disabled={zoomLevel >= 3}
+                  onClick={() => setZoomLevel((z) => Math.min(3, +(z + 0.5).toFixed(1)))}
+                  className="grid h-7 w-7 place-items-center rounded border border-white/10 text-white/80 transition-colors hover:bg-white/10 disabled:opacity-40"
+                >
+                  +
+                </button>
+                {zoomLevel > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => setZoomLevel(1)}
+                    className="h-7 px-1.5 text-[11px] font-medium text-brand-soft hover:underline"
+                  >
+                    Reset
+                  </button>
+                )}
+                <button
+                  type="button"
+                  aria-label="Close photo viewer"
+                  onClick={() => {
+                    lightboxOpen.current = false
+                    setActivePhotoIndex(null)
+                    setZoomLevel(1)
+                  }}
+                  className="ml-1.5 grid h-7 w-7 place-items-center rounded-lg text-white/80 transition-colors hover:bg-white/10 hover:text-white"
+                >
+                  <CloseIcon size={16} />
+                </button>
+              </div>
             </div>
-            <img
-              src={activePhoto}
-              alt="Selected listing photo"
-              className="max-h-[62vh] w-full bg-ink object-contain"
-            />
+
+            {/* Photo with zoom container */}
+            <div className="relative flex items-center justify-center overflow-hidden bg-black/50 min-h-[280px] max-h-[62vh] p-2">
+              <img
+                src={listing.imageUrls[activePhotoIndex]}
+                alt={`Product angle ${activePhotoIndex + 1}`}
+                style={{
+                  transform: `scale(${zoomLevel})`,
+                  transition: 'transform 0.2s cubic-bezier(0.2, 0, 0, 1)',
+                  transformOrigin: 'center center',
+                }}
+                className="max-h-[58vh] max-w-full select-none object-contain"
+              />
+
+              {/* Prev / Next photo buttons */}
+              {listing.imageUrls.length > 1 && (
+                <>
+                  <button
+                    type="button"
+                    aria-label="Previous photo"
+                    onClick={() => {
+                      setActivePhotoIndex((prev) =>
+                        prev === null || prev === 0 ? listing.imageUrls.length - 1 : prev - 1,
+                      )
+                      setZoomLevel(1)
+                    }}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 grid h-8 w-8 place-items-center rounded-full bg-black/60 text-white transition-colors hover:bg-black/90 shadow-md"
+                  >
+                    ‹
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Next photo"
+                    onClick={() => {
+                      setActivePhotoIndex((prev) =>
+                        prev === null || prev >= listing.imageUrls.length - 1 ? 0 : prev + 1,
+                      )
+                      setZoomLevel(1)
+                    }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 grid h-8 w-8 place-items-center rounded-full bg-black/60 text-white transition-colors hover:bg-black/90 shadow-md"
+                  >
+                    ›
+                  </button>
+                </>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between border-t border-white/10 bg-white/5 px-4 py-2 text-[11.5px] text-white/60">
+              <span>Interactive Zoom · Use + / - or Reset</span>
+              <span>Angle {activePhotoIndex + 1} of {listing.imageUrls.length}</span>
+            </div>
           </div>
         </div>
       )}

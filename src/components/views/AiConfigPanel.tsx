@@ -6,9 +6,12 @@ import {
   isRouteMissing,
   persistLocalAiConfig,
   readLocalAiConfig,
+  sanitizeAiInput,
   saveAiConfig,
+  testAiConnection,
   type AiConfig,
   type AiConfigUpdate,
+  type AiTestResult,
   type LocalAiConfig,
 } from '../../api/client'
 import { AlertIcon, RefreshIcon } from '../icons'
@@ -35,7 +38,7 @@ const PROVIDERS: ProviderSpec[] = [
     label: 'Google Gemini',
     hint: 'Google AI Studio — multimodal vision + long context.',
     defaultModel: 'gemini-2.5-flash',
-    models: ['gemini-2.5-flash', 'gemini-2.0-flash'],
+    models: ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'],
     defaultBaseUrl: '',
     withBaseUrl: false,
   },
@@ -52,8 +55,8 @@ const PROVIDERS: ProviderSpec[] = [
     id: 'groq',
     label: 'Groq',
     hint: 'Groq Cloud — lowest latency open-model inference.',
-    defaultModel: 'llama-3.2-90b-vision-preview',
-    models: ['llama-3.2-90b-vision-preview', 'llama-3.3-70b-versatile'],
+    defaultModel: 'meta-llama/llama-4-scout-17b-16e-instruct',
+    models: ['meta-llama/llama-4-scout-17b-16e-instruct', 'llama-3.3-70b-versatile'],
     defaultBaseUrl: '',
     withBaseUrl: false,
   },
@@ -61,8 +64,8 @@ const PROVIDERS: ProviderSpec[] = [
     id: 'openrouter',
     label: 'OpenRouter',
     hint: 'Single key across every major model — routing handled upstream.',
-    defaultModel: 'openai/gpt-4o-mini',
-    models: ['openai/gpt-4o-mini', 'google/gemini-2.5-flash'],
+    defaultModel: 'google/gemini-2.0-flash-001',
+    models: ['google/gemini-2.0-flash-001', 'openai/gpt-4o-mini'],
     defaultBaseUrl: 'https://openrouter.ai/api/v1',
     withBaseUrl: true,
   },
@@ -148,6 +151,8 @@ export function AiConfigPanel({ onToast }: AiConfigPanelProps) {
   const [apiKey, setApiKey] = useState('')
   const [baseUrl, setBaseUrl] = useState('')
   const [saving, setSaving] = useState(false)
+  const [testing, setTesting] = useState(false)
+  const [testResult, setTestResult] = useState<AiTestResult | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
   const requestSeq = useRef(0)
 
@@ -226,28 +231,30 @@ export function AiConfigPanel({ onToast }: AiConfigPanelProps) {
     setBaseUrl(next.defaultBaseUrl)
     setApiKey('')
     setFormError(null)
+    setTestResult(null)
   }
 
   const handleSave = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    const trimmedModel = model.trim()
-    if (!trimmedModel) {
+    const sanitizedModel = sanitizeAiInput(model)
+    if (!sanitizedModel) {
       setFormError('Enter a model name before pushing the configuration.')
       return
     }
-    const trimmedBaseUrl = baseUrl.trim()
-    if (showBaseUrl && spec.id === 'custom' && !trimmedBaseUrl) {
+    const sanitizedBaseUrl = sanitizeAiInput(baseUrl)
+    if (showBaseUrl && spec.id === 'custom' && !sanitizedBaseUrl) {
       setFormError('A base URL is required for a custom OpenAI-compatible endpoint.')
       return
     }
 
     setSaving(true)
     setFormError(null)
+    const sanitizedApiKey = sanitizeAiInput(apiKey)
     const update: AiConfigUpdate = {
       ai_provider: provider,
-      ai_model: trimmedModel,
-      ai_api_key: apiKey.trim(),
-      ai_base_url: showBaseUrl ? trimmedBaseUrl : '',
+      ai_model: sanitizedModel,
+      ai_api_key: sanitizedApiKey,
+      ai_base_url: showBaseUrl ? sanitizedBaseUrl : '',
     }
     try {
       const next = await saveAiConfig(update)
@@ -280,6 +287,69 @@ export function AiConfigPanel({ onToast }: AiConfigPanelProps) {
       }
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleTestConnection = async () => {
+    const sanitizedModel = sanitizeAiInput(model)
+    if (!sanitizedModel) {
+      setFormError('Enter a model name before testing the AI connection.')
+      return
+    }
+    const sanitizedBaseUrl = sanitizeAiInput(baseUrl)
+    if (showBaseUrl && spec.id === 'custom' && !sanitizedBaseUrl) {
+      setFormError('A base URL is required for a custom OpenAI-compatible endpoint.')
+      return
+    }
+
+    setTesting(true)
+    setFormError(null)
+    setTestResult(null)
+
+    const sanitizedApiKey = sanitizeAiInput(apiKey)
+    const update: AiConfigUpdate = {
+      ai_provider: provider,
+      ai_model: sanitizedModel,
+      ai_api_key: sanitizedApiKey,
+      ai_base_url: showBaseUrl ? sanitizedBaseUrl : '',
+    }
+
+    try {
+      // First save configuration so the backend has the sanitized key and model
+      try {
+        const next = await saveAiConfig(update)
+        clearLocalAiConfig()
+        setLocalPending(null)
+        setRoutePending(false)
+        applyConfig(next)
+      } catch (saveError) {
+        if (isRouteMissing(saveError)) {
+          persistLocalAiConfig(update)
+          setLocalPending(readLocalAiConfig())
+          setRoutePending(true)
+        }
+      }
+
+      // Execute live diagnostic against /ai/chat
+      const result = await testAiConnection()
+      setTestResult(result)
+      if (result.ok) {
+        onToast(`Live AI engine verified & connected (${result.latencyMs} ms)`, 'success')
+      } else {
+        onToast(`AI connection test failed: ${result.error ?? 'Unknown error'}`, 'critical')
+      }
+    } catch (err) {
+      const errorMsg = apiErrorMessage(err)
+      setTestResult({
+        ok: false,
+        latencyMs: 0,
+        provider,
+        model: sanitizedModel,
+        error: errorMsg,
+      })
+      onToast(`AI connection test failed: ${errorMsg}`, 'critical')
+    } finally {
+      setTesting(false)
     }
   }
 
@@ -409,6 +479,7 @@ export function AiConfigPanel({ onToast }: AiConfigPanelProps) {
             <div className="mt-2 flex flex-wrap gap-2">
               {spec.models.map((preset) => {
                 const active = preset === model.trim()
+                const isRecommended = preset === 'gemini-2.5-flash'
                 return (
                   <button
                     key={preset}
@@ -422,6 +493,11 @@ export function AiConfigPanel({ onToast }: AiConfigPanelProps) {
                     }`}
                   >
                     {preset}
+                    {isRecommended && (
+                      <span className="ml-1 font-sans font-semibold text-[10.5px] text-brand">
+                        · Recommended
+                      </span>
+                    )}
                   </button>
                 )
               })}
@@ -508,7 +584,69 @@ export function AiConfigPanel({ onToast }: AiConfigPanelProps) {
           </div>
         )}
 
-        {/* Save */}
+        {/* Live Diagnostic Card */}
+        {testResult && (
+          <div
+            role="status"
+            className={`rounded-xl border p-4 transition-all ${
+              testResult.ok
+                ? 'border-success/30 bg-success-soft/30'
+                : 'border-critical/30 bg-critical-soft/30'
+            }`}
+          >
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <span
+                  className={`h-2.5 w-2.5 rounded-full ${
+                    testResult.ok ? 'bg-success animate-pulse' : 'bg-critical'
+                  }`}
+                />
+                <p
+                  className={`text-[13px] font-semibold ${
+                    testResult.ok ? 'text-success' : 'text-critical'
+                  }`}
+                >
+                  {testResult.ok
+                    ? '● Live AI Connected & Responding'
+                    : '○ Live AI Connection Failed'}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="tabular font-mono text-[12px] font-medium text-ink-muted">
+                  {testResult.latencyMs} ms round-trip
+                </span>
+                <Badge tone={testResult.ok ? 'success' : 'critical'}>
+                  {testResult.ok ? 'Ready for 4-Photo Scanning' : 'Diagnostic Error'}
+                </Badge>
+              </div>
+            </div>
+
+            {testResult.ok ? (
+              <div className="mt-3 rounded-lg border border-line bg-surface p-3.5">
+                <p className="text-[10.5px] font-semibold tracking-wider text-ink-faint uppercase">
+                  Live Response &amp; Valuation Preview
+                </p>
+                <p className="mt-1 font-mono text-[13px] leading-relaxed text-ink">
+                  {testResult.sampleOutput}
+                </p>
+              </div>
+            ) : (
+              <div className="mt-3 rounded-lg border border-critical/20 bg-surface p-3.5">
+                <p className="text-[10.5px] font-semibold tracking-wider text-critical uppercase">
+                  Error Details
+                </p>
+                <p className="mt-1 font-mono text-[12.5px] leading-relaxed text-critical">
+                  {testResult.error || 'The AI service returned an unhandled error.'}
+                </p>
+                <p className="mt-2 text-[12px] text-ink-muted">
+                  Ensure the API key has no trailing/leading whitespace or invalid permissions, and that the model ID is active.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Save & Test */}
         <div className="flex flex-col gap-3 border-t border-line pt-4 sm:flex-row sm:items-center sm:justify-between">
           <p
             role={formError ? 'alert' : undefined}
@@ -521,18 +659,30 @@ export function AiConfigPanel({ onToast }: AiConfigPanelProps) {
                 ? 'While /admin/ai-config is still deploying, this browser keeps the only copy of the key and pushes it as soon as the route goes live.'
                 : 'The key is stored on the backend only — this dashboard does not keep a copy in the browser.')}
           </p>
-          <Button
-            type="submit"
-            variant="primary"
-            className="shrink-0 justify-center"
-            disabled={saving || (loading && !config)}
-          >
-            {saving
-              ? 'Pushing…'
-              : syncPending
-                ? 'Save & Queue for Sync'
-                : 'Save & Push to Live App'}
-          </Button>
+          <div className="flex flex-wrap items-center gap-2.5">
+            <Button
+              type="button"
+              variant="outline"
+              className="shrink-0 justify-center"
+              disabled={saving || testing || (loading && !config)}
+              onClick={() => void handleTestConnection()}
+            >
+              <RefreshIcon size={15} className={testing ? 'animate-spin' : undefined} />
+              {testing ? 'Testing Engine…' : 'Test Live AI Connection'}
+            </Button>
+            <Button
+              type="submit"
+              variant="primary"
+              className="shrink-0 justify-center"
+              disabled={saving || testing || (loading && !config)}
+            >
+              {saving
+                ? 'Pushing…'
+                : syncPending
+                  ? 'Save & Queue for Sync'
+                  : 'Save & Push to Live App'}
+            </Button>
+          </div>
         </div>
       </form>
     </Panel>

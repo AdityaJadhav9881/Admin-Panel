@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { Listing, User } from '../../data/mock'
+import type { Listing, ListingCategory, User } from '../../data/mock'
 import {
   LISTING_DELETE_TRUST_PENALTY,
   categoryLabel,
@@ -9,6 +9,7 @@ import {
 import { formatMoney, initials } from '../../lib/format'
 import { FlagInspector } from '../listings/FlagInspector'
 import { ListingThumb } from '../listings/ListingThumb'
+import { DownloadIcon, SearchIcon } from '../icons'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
@@ -33,6 +34,16 @@ const TABS: { id: ListingFilter; label: string }[] = [
   { id: 'sold', label: 'Sold' },
 ]
 
+const CATEGORY_FILTERS: { id: ListingCategory | 'all'; label: string }[] = [
+  { id: 'all', label: 'All Categories' },
+  { id: 'textbooks', label: 'Textbooks' },
+  { id: 'electronics', label: 'Electronics' },
+  { id: 'furniture', label: 'Furniture' },
+  { id: 'transport', label: 'Bikes & transport' },
+  { id: 'supplies', label: 'Lab & supplies' },
+  { id: 'other', label: 'Other' },
+]
+
 function deviationTone(deviation: number): 'success' | 'warning' | 'critical' {
   const magnitude = Math.abs(deviation)
   if (magnitude > 50) return 'critical'
@@ -50,6 +61,8 @@ export function ListingsView({
   onOpenSeller,
 }: ListingsViewProps) {
   const [filter, setFilter] = useState<ListingFilter>('all')
+  const [categoryFilter, setCategoryFilter] = useState<ListingCategory | 'all'>('all')
+  const [searchQuery, setSearchQuery] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [confirm, setConfirm] = useState<{ kind: 'delete' | 'ban'; listing: Listing } | null>(null)
 
@@ -60,10 +73,30 @@ export function ListingsView({
     sold: listings.filter((l) => l.status === 'sold').length,
   }
 
+  const normalizedQuery = searchQuery.trim().toLowerCase()
   const visible = listings.filter((listing) => {
-    if (filter === 'all') return true
-    if (filter === 'flagged') return listing.status === 'flagged'
-    return listing.status === filter
+    if (filter === 'flagged' && listing.status !== 'flagged') return false
+    if (filter !== 'all' && filter !== 'flagged' && listing.status !== filter) return false
+    if (categoryFilter !== 'all' && listing.category !== categoryFilter) return false
+
+    if (normalizedQuery) {
+      const seller = users.find((user) => user.id === listing.sellerId)
+      const sellerName = (seller?.name ?? '').toLowerCase()
+      const title = listing.title.toLowerCase()
+      const cat = (categoryLabel[listing.category] ?? listing.category).toLowerCase()
+      const tags = (listing.aiTags ?? '').toLowerCase()
+      const notes = (listing.aiConditionNotes ?? '').toLowerCase()
+      if (
+        !title.includes(normalizedQuery) &&
+        !sellerName.includes(normalizedQuery) &&
+        !cat.includes(normalizedQuery) &&
+        !tags.includes(normalizedQuery) &&
+        !notes.includes(normalizedQuery)
+      ) {
+        return false
+      }
+    }
+    return true
   })
 
   const selected = listings.find((listing) => listing.id === selectedId) ?? null
@@ -78,58 +111,189 @@ export function ListingsView({
     setSelectedId(null)
   }
 
+  const handleExportCsv = () => {
+    const headers = [
+      'Listing ID',
+      'Title',
+      'Seller Name',
+      'Category',
+      'Status',
+      'Price (INR)',
+      'AI Fair Price (INR)',
+      'Deviation (%)',
+      'AI Search Tags',
+      'AI Condition Notes',
+      'Trust Flag Reason',
+      'Listed Date',
+    ]
+
+    const rows = visible.map((l) => {
+      const seller = users.find((u) => u.id === l.sellerId)
+      const dev = priceDeviation(l)
+      const escape = (val: string | null | undefined) =>
+        `"${(val ?? '').replace(/"/g, '""').replace(/\r?\n/g, ' ')}"`
+      return [
+        escape(l.id),
+        escape(l.title),
+        escape(seller?.name ?? l.sellerId),
+        escape(categoryLabel[l.category] ?? l.category),
+        escape(l.status),
+        l.price,
+        l.aiPrice,
+        `${dev > 0 ? '+' : ''}${dev}%`,
+        escape(l.aiTags),
+        escape(l.aiConditionNotes),
+        escape(l.flag?.reason),
+        escape(l.listed),
+      ].join(',')
+    })
+
+    const csvData = [headers.join(','), ...rows].join('\r\n')
+    const blob = new Blob([csvData], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = `CampusMart-Listings-Report-${new Date().toISOString().slice(0, 10)}.csv`
+    document.body.appendChild(anchor)
+    anchor.click()
+    document.body.removeChild(anchor)
+    URL.revokeObjectURL(url)
+  }
+
   return (
     <div className="view-enter space-y-6">
       <Panel
         title="Listing moderation"
         caption="Every listing is scored by the AI agents; flagged items open in the inspector with the trust reason."
         action={
+          <div className="flex w-full flex-wrap items-center gap-2.5 sm:w-auto">
+            <div
+              role="group"
+              aria-label="Filter listings"
+              className="inline-flex w-full flex-wrap rounded-lg border border-line bg-surface p-0.5 sm:w-auto"
+            >
+              {TABS.map((tab) => {
+                const active = filter === tab.id
+                const isFlagged = tab.id === 'flagged'
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => setFilter(tab.id)}
+                    className={`h-8 rounded-[7px] px-3 text-[13px] whitespace-nowrap transition-colors duration-150 ${
+                      active
+                        ? 'bg-brand-soft font-medium text-brand-strong'
+                        : isFlagged && counts.flagged > 0
+                          ? 'font-medium text-critical hover:bg-critical-soft'
+                          : 'text-ink-muted hover:bg-surface-2 hover:text-ink'
+                    }`}
+                  >
+                    {tab.label}
+                    {isFlagged && counts.flagged > 0 ? (
+                      <span className="tabular ml-1.5 rounded-md bg-critical-soft px-1.5 py-0.5 text-[11px] font-semibold text-critical">
+                        {counts.flagged}
+                      </span>
+                    ) : (
+                      <span className="tabular ml-1.5 text-[12px] opacity-70">
+                        {counts[tab.id]}
+                      </span>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+            <Button
+              variant="outline"
+              onClick={handleExportCsv}
+              className="h-9 gap-1.5 px-3 text-[12.5px]"
+              title="Download filtered listings report as CSV"
+            >
+              <DownloadIcon size={14} />
+              Export CSV
+            </Button>
+          </div>
+        }
+      >
+        {/* Search & Category Filter Bar */}
+        <div className="border-b border-line bg-surface-2/40 px-5 py-3.5 space-y-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="relative flex-1 max-w-md">
+              <SearchIcon
+                size={16}
+                className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-ink-faint"
+              />
+              <input
+                type="search"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search title, seller, category, or AI tags…"
+                aria-label="Search listings by title, seller, category or tags"
+                className="h-9 w-full rounded-lg border border-line bg-surface pr-3 pl-9 text-[13px] text-ink transition-colors placeholder:text-ink-faint hover:border-line-strong focus:border-brand"
+              />
+            </div>
+            <div className="flex items-center gap-2 text-[12px] text-ink-muted">
+              <span>Showing {visible.length} of {listings.length} listings</span>
+              {(searchQuery || categoryFilter !== 'all') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchQuery('')
+                    setCategoryFilter('all')
+                  }}
+                  className="font-medium text-brand hover:underline"
+                >
+                  Reset filters
+                </button>
+              )}
+            </div>
+          </div>
+
           <div
             role="group"
-            aria-label="Filter listings"
-            className="inline-flex w-full flex-wrap rounded-lg border border-line bg-surface p-0.5 sm:w-auto"
+            aria-label="Filter by category"
+            className="flex flex-wrap items-center gap-1.5 pt-0.5"
           >
-            {TABS.map((tab) => {
-              const active = filter === tab.id
-              const isFlagged = tab.id === 'flagged'
+            {CATEGORY_FILTERS.map((cat) => {
+              const active = categoryFilter === cat.id
               return (
                 <button
-                  key={tab.id}
+                  key={cat.id}
                   type="button"
                   aria-pressed={active}
-                  onClick={() => setFilter(tab.id)}
-                  className={`h-8 rounded-[7px] px-3 text-[13px] whitespace-nowrap transition-colors duration-150 ${
+                  onClick={() => setCategoryFilter(cat.id)}
+                  className={`h-7 rounded-full border px-3 text-[12px] whitespace-nowrap transition-colors duration-150 ${
                     active
-                      ? 'bg-brand-soft font-medium text-brand-strong'
-                      : isFlagged && counts.flagged > 0
-                        ? 'font-medium text-critical hover:bg-critical-soft'
-                        : 'text-ink-muted hover:bg-surface-2 hover:text-ink'
+                      ? 'border-brand bg-brand-soft font-medium text-brand-strong'
+                      : 'border-line bg-surface text-ink-muted hover:border-line-strong hover:text-ink'
                   }`}
                 >
-                  {tab.label}
-                  {isFlagged && counts.flagged > 0 ? (
-                    <span className="tabular ml-1.5 rounded-md bg-critical-soft px-1.5 py-0.5 text-[11px] font-semibold text-critical">
-                      {counts.flagged}
-                    </span>
-                  ) : (
-                    <span className="tabular ml-1.5 text-[12px] opacity-70">{counts[tab.id]}</span>
-                  )}
+                  {cat.label}
                 </button>
               )
             })}
           </div>
-        }
-      >
+        </div>
+
         {visible.length === 0 ? (
           <div className="px-5 py-14 text-center">
             <p className="text-[14px] font-semibold text-ink">No listings in this view</p>
             <p className="mx-auto mt-1.5 max-w-sm text-[13px] leading-relaxed text-ink-muted">
-              {filter === 'flagged'
-                ? 'No listing currently carries an AI trust flag. New flags appear here as agents scan the marketplace.'
-                : 'Nothing has this status right now.'}
+              {searchQuery || categoryFilter !== 'all'
+                ? 'No listings match the current search query and category filters.'
+                : filter === 'flagged'
+                  ? 'No listing currently carries an AI trust flag. New flags appear here as agents scan the marketplace.'
+                  : 'Nothing has this status right now.'}
             </p>
-            <Button className="mt-4" onClick={() => setFilter('all')}>
-              Show all listings
+            <Button
+              className="mt-4"
+              onClick={() => {
+                setFilter('all')
+                setCategoryFilter('all')
+                setSearchQuery('')
+              }}
+            >
+              Clear filters and show all
             </Button>
           </div>
         ) : (

@@ -568,6 +568,7 @@ export default function App() {
                   agents={agents}
                   services={services}
                   probing={probing}
+                  listings={listings}
                   onNavigate={navigate}
                   onAcknowledge={acknowledgeFlag}
                   onRunProbes={() => void runProbes()}

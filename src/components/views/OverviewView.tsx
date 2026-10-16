@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type {
   Agent,
   FlaggedTransaction,
+  Listing,
   OverviewMetrics,
   Service,
   ViewId,
@@ -34,6 +35,7 @@ interface OverviewViewProps {
   agents: Agent[]
   services: Service[]
   probing: boolean
+  listings?: Listing[]
   onNavigate: (view: ViewId) => void
   onAcknowledge: (id: string) => void
   onRunProbes: () => void
@@ -45,6 +47,7 @@ export function OverviewView({
   agents,
   services,
   probing,
+  listings = [],
   onNavigate,
   onAcknowledge,
   onRunProbes,
@@ -57,6 +60,14 @@ export function OverviewView({
   const fraudAgent = agents.find((agent) => agent.id === 'trust_fraud_detection')
   const overall = overallServiceState(services)
   const issueCount = issueServiceCount(services)
+
+  const totalGmv = listings.reduce((sum, item) => sum + item.price, 0)
+  const totalAi = listings.reduce((sum, item) => sum + item.aiPrice, 0)
+  const avgAiValue = listings.length > 0 ? Math.round(totalAi / listings.length) : 0
+  const categoryCounts = listings.reduce<Record<string, number>>((acc, item) => {
+    acc[item.category] = (acc[item.category] ?? 0) + 1
+    return acc
+  }, {})
 
   const scrollToQueue = () => {
     document.getElementById('flag-queue')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -197,48 +208,112 @@ export function OverviewView({
           )}
         </Panel>
 
-        {/* System status — connected to the settings view */}
-        <Panel
-          title="System status"
-          caption={`${activeAgents} of ${agents.length} agents active · ${issueCount} service issue${issueCount === 1 ? '' : 's'}`}
-          action={<Badge tone={stateTone[overall]} withDot>{stateLabel[overall]}</Badge>}
-        >
-          {!fraudAgent?.enabled && (
-            <div className="flex items-start gap-3 border-b border-line bg-warning-soft px-5 py-3.5">
-              <span className="mt-0.5 shrink-0 text-warning">
-                <AlertIcon size={16} />
-              </span>
-              <p className="text-[12.5px] leading-relaxed text-warning">
-                Trust &amp; Fraud Detection Agent is paused — new transactions are not being
-                flagged.
-              </p>
+        <div className="space-y-6">
+          {/* Marketplace Value Summary — Level 2 financial intelligence */}
+          <Panel
+            title="Marketplace value summary"
+            caption="Live listed GMV, AI appraisal benchmark and active category distribution."
+            action={
+              <Badge tone="brand">
+                {listings.length} listed item{listings.length === 1 ? '' : 's'}
+              </Badge>
+            }
+          >
+            <div className="p-5 space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-xl border border-line bg-surface-2 p-3.5">
+                  <p className="text-[11.5px] font-medium text-ink-muted">Total Listed GMV</p>
+                  <p className="tabular mt-1 text-[20px] font-bold text-ink">
+                    {formatMoney(totalGmv)}
+                  </p>
+                  <p className="mt-1 text-[11px] text-ink-faint">Cumulative catalog valuation</p>
+                </div>
+                <div className="rounded-xl border border-line bg-surface-2 p-3.5">
+                  <p className="text-[11.5px] font-medium text-ink-muted">Avg AI Fair Value</p>
+                  <p className="tabular mt-1 text-[20px] font-bold text-brand">
+                    {formatMoney(avgAiValue)}
+                  </p>
+                  <p className="mt-1 text-[11px] text-ink-faint">Price Prediction Agent benchmark</p>
+                </div>
+              </div>
+
+              <div className="border-t border-line pt-3.5">
+                <p className="text-[10.5px] font-semibold tracking-[0.09em] text-ink-faint uppercase mb-2.5">
+                  Active Category Breakdown
+                </p>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {(
+                    [
+                      ['textbooks', 'Textbooks'],
+                      ['electronics', 'Electronics'],
+                      ['furniture', 'Furniture'],
+                      ['transport', 'Transport'],
+                      ['supplies', 'Supplies'],
+                      ['other', 'Other'],
+                    ] as const
+                  ).map(([catKey, label]) => {
+                    const count = categoryCounts[catKey] ?? 0
+                    const pct = listings.length > 0 ? Math.round((count / listings.length) * 100) : 0
+                    return (
+                      <div
+                        key={catKey}
+                        className="flex items-center justify-between rounded-lg border border-line bg-surface px-2.5 py-1.5 text-[12px]"
+                      >
+                        <span className="truncate text-ink-muted">{label}</span>
+                        <span className="tabular font-medium text-ink ml-1.5">
+                          {count} <span className="text-[10.5px] text-ink-faint">({pct}%)</span>
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
             </div>
-          )}
+          </Panel>
 
-          <ul className="divide-y divide-line">
-            {services.map((service) => (
-              <ServiceRow key={service.id} service={service} />
-            ))}
-          </ul>
-
-          <div className="border-t border-line px-5 py-3.5">
-            {probing && (
-              <p className="mb-2.5 flex items-center gap-2 text-[12.5px] text-ink-muted">
-                <span className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-line border-t-brand" />
-                Measuring live latency across all five services…
-              </p>
+          {/* System status — connected to the settings view */}
+          <Panel
+            title="System status"
+            caption={`${activeAgents} of ${agents.length} agents active · ${issueCount} service issue${issueCount === 1 ? '' : 's'}`}
+            action={<Badge tone={stateTone[overall]} withDot>{stateLabel[overall]}</Badge>}
+          >
+            {!fraudAgent?.enabled && (
+              <div className="flex items-start gap-3 border-b border-line bg-warning-soft px-5 py-3.5">
+                <span className="mt-0.5 shrink-0 text-warning">
+                  <AlertIcon size={16} />
+                </span>
+                <p className="text-[12.5px] leading-relaxed text-warning">
+                  Trust &amp; Fraud Detection Agent is paused — new transactions are not being
+                  flagged.
+                </p>
+              </div>
             )}
-            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-              <Button className="justify-center" disabled={probing} onClick={onRunProbes}>
-                <RefreshIcon size={15} className={probing ? 'animate-spin' : undefined} />
-                {probing ? 'Probing…' : 'Run Live Probe'}
-              </Button>
-              <Button className="justify-center" onClick={() => onNavigate('settings')}>
-                Open AI &amp; API settings
-              </Button>
+
+            <ul className="divide-y divide-line">
+              {services.map((service) => (
+                <ServiceRow key={service.id} service={service} />
+              ))}
+            </ul>
+
+            <div className="border-t border-line px-5 py-3.5">
+              {probing && (
+                <p className="mb-2.5 flex items-center gap-2 text-[12.5px] text-ink-muted">
+                  <span className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-line border-t-brand" />
+                  Measuring live latency across all five services…
+                </p>
+              )}
+              <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                <Button className="justify-center" disabled={probing} onClick={onRunProbes}>
+                  <RefreshIcon size={15} className={probing ? 'animate-spin' : undefined} />
+                  {probing ? 'Probing…' : 'Run Live Probe'}
+                </Button>
+                <Button className="justify-center" onClick={() => onNavigate('settings')}>
+                  Open AI &amp; API settings
+                </Button>
+              </div>
             </div>
-          </div>
-        </Panel>
+          </Panel>
+        </div>
       </section>
     </div>
   )

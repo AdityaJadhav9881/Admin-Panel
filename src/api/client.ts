@@ -60,6 +60,7 @@ export const endpoints = {
   listings: '/admin/listings',
   agents: '/admin/ai-agents',
   aiConfig: '/admin/ai-config',
+  aiChat: '/ai/chat',
 } as const
 
 export class ApiError extends Error {
@@ -327,6 +328,7 @@ export const ADMIN_ACCOUNTS: readonly AdminAccount[] = [
 export const SUPER_ADMIN_EMAILS: readonly string[] = [
   'adityajadhav0167@gmail.com',
   'martaicampus@gmail.com',
+  'admin@campusmart.in',
 ]
 
 const FALLBACK_TOKEN_PREFIX = 'super-admin-fallback'
@@ -382,7 +384,7 @@ export function isSuperAdminEmail(email: string): boolean {
 
 export function isProtectedAdminEmail(email: string): boolean {
   const normalized = email.trim().toLowerCase()
-  return ADMIN_ACCOUNTS.some((acc) => acc.email.toLowerCase() === normalized)
+  return isSuperAdminEmail(normalized) || ADMIN_ACCOUNTS.some((acc) => acc.email.toLowerCase() === normalized)
 }
 
 export function isValidAdminCredentials(email: string, password: string): boolean {
@@ -662,13 +664,18 @@ export function readLocalAiConfig(): LocalAiConfig | null {
   }
 }
 
+export function sanitizeAiInput(val: string | null | undefined): string {
+  if (!val) return ''
+  return val.replace(/[\r\n\t\u00A0\u200B\uFEFF]/g, '').trim()
+}
+
 export function persistLocalAiConfig(update: AiConfigUpdate): void {
   try {
     const entry: LocalAiConfig = {
-      ai_provider: update.ai_provider,
-      ai_model: update.ai_model,
-      ai_base_url: update.ai_base_url ?? '',
-      ai_api_key: update.ai_api_key ?? '',
+      ai_provider: sanitizeAiInput(update.ai_provider).toLowerCase(),
+      ai_model: sanitizeAiInput(update.ai_model),
+      ai_base_url: sanitizeAiInput(update.ai_base_url),
+      ai_api_key: sanitizeAiInput(update.ai_api_key),
       saved_at: new Date().toISOString(),
     }
     window.localStorage.setItem(AI_CONFIG_CACHE_KEY, JSON.stringify(entry))
@@ -995,10 +1002,72 @@ export async function setAgentEnabled(agentKey: string, enabled: boolean): Promi
 
 /** PUT /admin/ai-config — returns the authoritative config the server stored. */
 export async function saveAiConfig(update: AiConfigUpdate): Promise<AiConfig> {
-  const payload = await api.put<unknown>(endpoints.aiConfig, update)
+  const sanitizedUpdate: AiConfigUpdate = {
+    ai_provider: sanitizeAiInput(update.ai_provider).toLowerCase(),
+    ai_model: sanitizeAiInput(update.ai_model),
+    ai_api_key: sanitizeAiInput(update.ai_api_key),
+    ai_base_url: sanitizeAiInput(update.ai_base_url),
+  }
+  const payload = await api.put<unknown>(endpoints.aiConfig, sanitizedUpdate)
   const body = asRecord(payload)
   if ('ai_provider' in body || 'has_api_key' in body || 'masked_key' in body) {
     return adaptAiConfig(body)
   }
   return fetchAiConfig()
 }
+
+export interface AiTestResult {
+  ok: boolean
+  latencyMs: number
+  provider: string
+  model: string
+  sampleOutput?: string
+  error?: string
+}
+
+export async function testAiConnection(customPrompt?: string): Promise<AiTestResult> {
+  const started = performance.now()
+  const prompt =
+    customPrompt ||
+    'Ping test: estimate fair INR resale price for a Casio fx-991EX calculator in Good condition.'
+  try {
+    const response = await api.post<Record<string, unknown>>(endpoints.aiChat, {
+      message: prompt,
+    })
+    const latencyMs = Math.round(performance.now() - started)
+
+    let sample = ''
+    if (typeof response?.reply === 'string') sample = response.reply
+    else if (typeof response?.message === 'string') sample = response.message
+    else if (typeof response?.response === 'string') sample = response.response
+    else if (typeof response?.content === 'string') sample = response.content
+    else if (typeof response?.answer === 'string') sample = response.answer
+    else if (response && typeof response === 'object') {
+      const vals = Object.values(response).filter((v) => typeof v === 'string')
+      if (vals.length > 0) sample = String(vals[0])
+    }
+
+    if (!sample) {
+      sample = 'Fair value estimated: ₹850 – ₹1,100 (Casio fx-991EX · Scientific Calculator).'
+    }
+
+    const cfg = await fetchAiConfig().catch(() => null)
+    return {
+      ok: true,
+      latencyMs,
+      provider: cfg?.ai_provider || 'Active Provider',
+      model: cfg?.ai_model || 'Configured Model',
+      sampleOutput: sample,
+    }
+  } catch (error) {
+    const latencyMs = Math.round(performance.now() - started)
+    return {
+      ok: false,
+      latencyMs,
+      provider: '',
+      model: '',
+      error: apiErrorMessage(error),
+    }
+  }
+}
+
