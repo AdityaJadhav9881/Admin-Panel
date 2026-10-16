@@ -7,6 +7,7 @@ import type {
   ViewId,
 } from '../../data/mock'
 import {
+  issueServiceCount,
   overallServiceState,
   stateLabel,
   stateTone,
@@ -18,6 +19,7 @@ import {
   ChevronDownIcon,
   FlagIcon,
   InboxIcon,
+  RefreshIcon,
   UsersIcon,
 } from '../icons'
 import { Badge } from '../ui/Badge'
@@ -31,8 +33,10 @@ interface OverviewViewProps {
   queue: FlaggedTransaction[]
   agents: Agent[]
   services: Service[]
+  probing: boolean
   onNavigate: (view: ViewId) => void
   onAcknowledge: (id: string) => void
+  onRunProbes: () => void
 }
 
 export function OverviewView({
@@ -40,8 +44,10 @@ export function OverviewView({
   queue,
   agents,
   services,
+  probing,
   onNavigate,
   onAcknowledge,
+  onRunProbes,
 }: OverviewViewProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
@@ -50,7 +56,7 @@ export function OverviewView({
   const activeAgents = agents.filter((agent) => agent.enabled).length
   const fraudAgent = agents.find((agent) => agent.id === 'trust_fraud_detection')
   const overall = overallServiceState(services)
-  const issueCount = services.filter((s) => s.state !== 'operational').length
+  const issueCount = issueServiceCount(services)
 
   const scrollToQueue = () => {
     document.getElementById('flag-queue')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -70,7 +76,7 @@ export function OverviewView({
           label="Listings Today"
           value={metrics.listingsToday.toLocaleString('en-US')}
           icon={<InboxIcon size={17} />}
-          footnote="Live count from the FastAPI admin API"
+          footnote="Active campus marketplace listings"
         />
         <MetricCard
           label="Flagged Transactions"
@@ -216,12 +222,21 @@ export function OverviewView({
           </ul>
 
           <div className="border-t border-line px-5 py-3.5">
-            <Button
-              className="w-full justify-center"
-              onClick={() => onNavigate('settings')}
-            >
-              Open AI &amp; API settings
-            </Button>
+            {probing && (
+              <p className="mb-2.5 flex items-center gap-2 text-[12.5px] text-ink-muted">
+                <span className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-line border-t-brand" />
+                Measuring live latency across all five services…
+              </p>
+            )}
+            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+              <Button className="justify-center" disabled={probing} onClick={onRunProbes}>
+                <RefreshIcon size={15} className={probing ? 'animate-spin' : undefined} />
+                {probing ? 'Probing…' : 'Run Live Probe'}
+              </Button>
+              <Button className="justify-center" onClick={() => onNavigate('settings')}>
+                Open AI &amp; API settings
+              </Button>
+            </div>
           </div>
         </Panel>
       </section>

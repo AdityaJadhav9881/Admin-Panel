@@ -3,15 +3,15 @@
    Presentation-ready types and shared helpers consumed by the
    views and by the API adapter layer (src/api/client.ts).
    All live data is fetched from the FastAPI /admin/* endpoints;
-   only PLACEHOLDER_SERVICES holds static values (service probes
-   are not wired to a backend endpoint yet — labelled as such in
-   the Settings view).
+   SERVICE_CATALOG only defines *which* live probes run — every
+   state/latency value is filled in by src/api/health.ts from real
+   HTTP round-trip measurements (no placeholder readings).
    ============================================================ */
 
 export type ViewId = 'overview' | 'listings' | 'users' | 'settings'
 export type UserStatus = 'active' | 'blocked'
 export type StatusTone = 'success' | 'warning' | 'critical' | 'neutral'
-export type ServiceState = 'operational' | 'degraded' | 'unavailable'
+export type ServiceState = 'operational' | 'degraded' | 'unavailable' | 'pending'
 
 export interface User {
   id: string
@@ -46,8 +46,9 @@ export interface Service {
   id: string
   name: string
   state: ServiceState
-  /** `null` means no reading — never render as 0. */
+  /** `null` means no reading yet (or the probe timed out) — never render as 0. */
   latencyMs: number | null
+  /** Human-readable probe result (record counts, agent counts, provider, …). */
   note: string
 }
 
@@ -79,44 +80,47 @@ export const AGENT_CATALOG: Agent[] = [
   },
 ]
 
-/* --- Placeholder server / API health rows -------------------- */
-export const PLACEHOLDER_SERVICES: Service[] = [
+/* --- Live probe targets (state/latency filled in by health.ts) --- */
+export const SERVICE_CATALOG: Service[] = [
   {
     id: 'api',
-    name: 'FastAPI core',
-    state: 'operational',
+    name: 'CampusMart API Gateway',
+    state: 'pending',
     latencyMs: null,
-    note: 'REST + WebSocket gateway',
+    note: 'Timed GET / against the live API host',
   },
   {
     id: 'db',
-    name: 'PostgreSQL primary',
-    state: 'operational',
+    name: 'Neon PostgreSQL Primary',
+    state: 'pending',
     latencyMs: null,
-    note: 'Listings, users, transactions',
+    note: 'GET /products/ — live listing record count',
   },
   {
-    id: 'cache',
-    name: 'Redis cache',
-    state: 'operational',
+    id: 'orchestrator',
+    name: 'Multi-Agent Orchestrator',
+    state: 'pending',
     latencyMs: null,
-    note: 'Sessions and rate limiting',
+    note: 'GET /admin/ai-agents — active agent count',
   },
   {
-    id: 'inference',
-    name: 'Inference cluster',
-    state: 'operational',
+    id: 'llm',
+    name: 'Vision LLM & Config Engine',
+    state: 'pending',
     latencyMs: null,
-    note: 'Agent inference and scoring',
+    note: 'GET /admin/ai-config — configured provider + model',
   },
   {
     id: 'storage',
-    name: 'Object storage',
-    state: 'operational',
+    name: 'Cloudinary Object Storage',
+    state: 'pending',
     latencyMs: null,
-    note: 'Listing images and exports',
+    note: 'Listing photos resolve from the Cloudinary CDN',
   },
 ]
+
+/** How many listing photos the inspector gallery renders at once. */
+export const PHOTO_GALLERY_MAX = 4
 
 /* --- Derived helpers (single source for shared states) ----- */
 
@@ -124,12 +128,14 @@ export const stateTone: Record<ServiceState, StatusTone> = {
   operational: 'success',
   degraded: 'warning',
   unavailable: 'critical',
+  pending: 'neutral',
 }
 
 export const stateLabel: Record<ServiceState, string> = {
   operational: 'Operational',
   degraded: 'Degraded',
   unavailable: 'Unavailable',
+  pending: 'Not measured',
 }
 
 /** Postgres stores trust_score on a 0.0–5.0 scale. */
@@ -156,9 +162,16 @@ export function formatTrustScore(score: number): string {
 }
 
 export function overallServiceState(services: Service[]): ServiceState {
+  if (services.length === 0) return 'pending'
   if (services.some((s) => s.state === 'unavailable')) return 'unavailable'
   if (services.some((s) => s.state === 'degraded')) return 'degraded'
+  if (services.every((s) => s.state === 'pending')) return 'pending'
   return 'operational'
+}
+
+/** Rows that are actually broken — `pending` probes are not service issues. */
+export function issueServiceCount(services: Service[]): number {
+  return services.filter((s) => s.state === 'degraded' || s.state === 'unavailable').length
 }
 
 /* ============================================================
@@ -191,6 +204,12 @@ export interface Listing {
   aiPrice: number
   status: ListingStatus
   hasImage: boolean
+  /** Every angle the seller uploaded (Cloudinary), in upload order. */
+  imageUrls: string[]
+  /** Free-text search tags from the Listing Intelligence Agent. */
+  aiTags: string | null
+  /** Wear/defect notes from the vision model. */
+  aiConditionNotes: string | null
   listed: string
   flag: ListingFlag | null
 }

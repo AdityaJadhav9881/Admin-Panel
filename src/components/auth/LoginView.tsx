@@ -4,8 +4,6 @@ import { AlertIcon, ShieldIcon } from '../icons'
 import { Button } from '../ui/Button'
 import { ConnectingBox } from '../ui/ConnectingBox'
 
-const DEMO_EMAIL = 'aditya.jadhav@campus.edu'
-const DEMO_PASSWORD = 'password123'
 const SLOW_NOTICE_MS = 2000
 
 interface LoginViewProps {
@@ -26,12 +24,6 @@ export function LoginView({ onLogin }: LoginViewProps) {
       if (slowTimer.current !== null) window.clearTimeout(slowTimer.current)
     }
   }, [])
-
-  const fillDemo = () => {
-    setEmail(DEMO_EMAIL)
-    setPassword(DEMO_PASSWORD)
-    setError(null)
-  }
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -123,7 +115,7 @@ export function LoginView({ onLogin }: LoginViewProps) {
                 autoComplete="username"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
-                placeholder="you@campus.edu"
+                placeholder="admin@campusmart.in"
                 className="mt-1.5 h-10 w-full rounded-lg border border-line bg-surface px-3 text-[13.5px] text-ink transition-colors placeholder:text-ink-faint hover:border-line-strong focus:border-brand"
               />
             </div>
@@ -160,20 +152,10 @@ export function LoginView({ onLogin }: LoginViewProps) {
               <ConnectingBox detail={progress} />
             </div>
           )}
-
-          <div className="mt-4 rounded-lg border border-line bg-surface-2 px-3 py-3">
-            <p className="text-[12px] font-medium text-ink">Client evaluation</p>
-            <p className="mt-0.5 text-[12px] leading-relaxed text-ink-muted">
-              Use the seeded super-admin account for demos.
-            </p>
-            <Button className="mt-2.5 w-full justify-center" onClick={fillDemo}>
-              Fill demo admin credentials
-            </Button>
-          </div>
         </div>
 
-        <p className="mt-5 text-center text-[12px] text-rail-muted">
-          Authenticates against POST /auth/login · JWT stored locally
+        <p className="mt-5 text-center text-[12px] tracking-[0.08em] text-rail-muted uppercase">
+          CampusMart AI · Authorized Administration Portal
         </p>
       </div>
     </div>

@@ -1,7 +1,8 @@
 import type { Agent, Service } from '../../data/mock'
 import { overallServiceState, stateLabel, stateTone } from '../../data/mock'
-import { PauseIcon, PlayIcon } from '../icons'
+import { PauseIcon, PlayIcon, RefreshIcon } from '../icons'
 import { Badge } from '../ui/Badge'
+import { Button } from '../ui/Button'
 import { Panel } from '../ui/Panel'
 import { ServiceRow } from '../ui/ServiceRow'
 import { Toggle } from '../ui/Toggle'
@@ -11,11 +12,20 @@ import { AiConfigPanel } from './AiConfigPanel'
 interface SettingsViewProps {
   agents: Agent[]
   services: Service[]
+  probing: boolean
   onToggleAgent: (id: string) => void
+  onRunProbes: () => void
   onToast: (text: string, tone: ToastMessage['tone']) => void
 }
 
-export function SettingsView({ agents, services, onToggleAgent, onToast }: SettingsViewProps) {
+export function SettingsView({
+  agents,
+  services,
+  probing,
+  onToggleAgent,
+  onRunProbes,
+  onToast,
+}: SettingsViewProps) {
   const activeAgents = agents.filter((agent) => agent.enabled).length
   const allActive = activeAgents === agents.length
   const overall = overallServiceState(services)
@@ -69,13 +79,19 @@ export function SettingsView({ agents, services, onToggleAgent, onToast }: Setti
 
       <Panel
         title="Server & API health"
-        caption="Probe snapshot for the FastAPI service and its dependencies"
+        caption="Live round-trip latency measured from this browser against the production API"
         action={
-          <Badge tone={stateTone[overall]} withDot>
-            {stateLabel[overall]}
-          </Badge>
+          <div className="flex flex-wrap items-center justify-end gap-2.5">
+            <Badge tone={stateTone[overall]} withDot>
+              {stateLabel[overall]}
+            </Badge>
+            <Button className="h-9 justify-center" disabled={probing} onClick={onRunProbes}>
+              <RefreshIcon size={15} className={probing ? 'animate-spin' : undefined} />
+              {probing ? 'Probing…' : 'Run Live Probe'}
+            </Button>
+          </div>
         }
-        footer="Service probes are not wired to a backend endpoint yet — these rows are a placeholder with no live readings."
+        footer="Every row is a real HTTP measurement: gateway reachability, listing records, active agents, LLM configuration and Cloudinary photo delivery."
       >
         <ul className="divide-y divide-line">
           {services.map((service) => (

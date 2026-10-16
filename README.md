@@ -31,8 +31,8 @@ src/
   Block (confirmed) / Unblock actions.
 - **AI & API settings** — per-agent pause/resume switches and server health snapshot.
 
-All data is mocked and labelled as such in the top bar; the sidebar reports
-`Backend not connected` until the FastAPI service is wired up.
+All views are connected to the live FastAPI backend with real-time health probes,
+multi-provider AI engine configuration, and Cloudinary image moderation.
 
 Design follows the INFINITY DESIGN philosophy in this folder: neutral foundation,
 controlled accents, semantic colour only, progressive disclosure, no dead ends.

@@ -1,7 +1,8 @@
-import { useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Listing, User } from '../../data/mock'
 import {
   LISTING_DELETE_TRUST_PENALTY,
+  PHOTO_GALLERY_MAX,
   categoryLabel,
   formatTrustScore,
   priceDeviation,
@@ -32,6 +33,15 @@ function deviationTone(deviation: number): 'success' | 'warning' | 'critical' {
   return 'success'
 }
 
+/** "tag, tag; tag" -> ["tag", "tag", "tag"] (never yields an empty chip). */
+function aiTagList(raw: string): string[] {
+  const parts = raw
+    .split(/[,;]/)
+    .map((tag) => tag.trim())
+    .filter(Boolean)
+  return (parts.length > 0 ? parts : [raw.trim()]).slice(0, 12)
+}
+
 export function FlagInspector({
   listing,
   seller,
@@ -42,11 +52,19 @@ export function FlagInspector({
   onBanSeller,
   onOpenSeller,
 }: FlagInspectorProps) {
+  const [activePhoto, setActivePhoto] = useState<string | null>(null)
+  const lightboxOpen = useRef(false)
+
   useEffect(() => {
     if (!listing) return
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
-      // Escape closes the top-most layer only — a confirm dialog wins over the drawer.
+      // Escape closes the top-most layer only: photo lightbox, then confirm dialog, then drawer.
+      if (lightboxOpen.current) {
+        lightboxOpen.current = false
+        setActivePhoto(null)
+        return
+      }
       const confirmOpen = document.querySelector('[data-confirm]')
       if (confirmOpen) return
       onClose()
@@ -125,6 +143,39 @@ export function FlagInspector({
               <p className="mt-2 text-[12.5px] text-ink-muted">Listed {listing.listed}</p>
             </div>
           </section>
+
+          {/* Seller photos — every uploaded angle */}
+          {listing.imageUrls.length > 0 && (
+            <section>
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-[10.5px] font-semibold tracking-[0.09em] text-ink-faint uppercase">
+                  Seller photos
+                </p>
+                <span className="tabular text-[12px] text-ink-muted">
+                  {Math.min(listing.imageUrls.length, PHOTO_GALLERY_MAX)} of{' '}
+                  {listing.imageUrls.length}
+                </span>
+              </div>
+              <div className="mt-2.5 grid grid-cols-4 gap-2.5">
+                {listing.imageUrls.slice(0, PHOTO_GALLERY_MAX).map((url, index) => (
+                  <PhotoTile
+                    key={`${url}-${index}`}
+                    url={url}
+                    index={index}
+                    onOpen={() => {
+                      lightboxOpen.current = true
+                      setActivePhoto(url)
+                    }}
+                  />
+                ))}
+              </div>
+              <p className="mt-2 text-[12px] text-ink-muted">
+                {listing.imageUrls.length > PHOTO_GALLERY_MAX
+                  ? `Showing the first ${PHOTO_GALLERY_MAX} angles — ${listing.imageUrls.length - PHOTO_GALLERY_MAX} more uploaded. Select a photo to inspect it full size.`
+                  : 'Select a photo to inspect it full size.'}
+              </p>
+            </section>
+          )}
 
           {/* Pricing */}
           <section>
@@ -248,6 +299,35 @@ export function FlagInspector({
             </section>
           )}
 
+          {/* AI listing analysis — vision notes + search tags */}
+          {(listing.aiConditionNotes || listing.aiTags) && (
+            <section className="rounded-xl border border-line bg-surface-2 p-4">
+              <p className="text-[10.5px] font-semibold tracking-[0.09em] text-ink-faint uppercase">
+                AI listing analysis
+              </p>
+              {listing.aiConditionNotes && (
+                <div className="mt-3">
+                  <p className="text-[11.5px] font-medium text-ink-muted">Condition notes</p>
+                  <p className="mt-1 text-[13px] leading-relaxed text-ink">
+                    {listing.aiConditionNotes}
+                  </p>
+                </div>
+              )}
+              {listing.aiTags && (
+                <div className="mt-3.5">
+                  <p className="text-[11.5px] font-medium text-ink-muted">Search tags</p>
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    {aiTagList(listing.aiTags).map((tag) => (
+                      <Badge key={tag} tone="brand">
+                        {tag}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </section>
+          )}
+
           {/* Record details */}
           <section>
             <p className="text-[10.5px] font-semibold tracking-[0.09em] text-ink-faint uppercase">
@@ -303,7 +383,84 @@ export function FlagInspector({
           </p>
         </footer>
       </div>
+
+      {/* Full-size photo viewer — sits above the drawer */}
+      {activePhoto && (
+        <div
+          className="fade-in absolute inset-0 z-[65] grid place-items-center bg-ink/75 p-5"
+          onClick={() => {
+            lightboxOpen.current = false
+            setActivePhoto(null)
+          }}
+          role="presentation"
+        >
+          <div
+            className="w-full max-w-[420px] overflow-hidden rounded-xl border border-white/15 bg-ink shadow-[0_24px_48px_-16px_rgba(0,0,0,0.6)]"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-2.5">
+              <p className="min-w-0 truncate font-mono text-[12px] text-white/80">
+                {listing.id}
+              </p>
+              <button
+                type="button"
+                aria-label="Close photo viewer"
+                onClick={() => {
+                  lightboxOpen.current = false
+                  setActivePhoto(null)
+                }}
+                className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-white/80 transition-colors hover:bg-white/10 hover:text-white"
+              >
+                <CloseIcon size={16} />
+              </button>
+            </div>
+            <img
+              src={activePhoto}
+              alt="Selected listing photo"
+              className="max-h-[62vh] w-full bg-ink object-contain"
+            />
+          </div>
+        </div>
+      )}
     </div>
+  )
+}
+
+function PhotoTile({
+  url,
+  index,
+  onOpen,
+}: {
+  url: string
+  index: number
+  onOpen: () => void
+}) {
+  const [failed, setFailed] = useState(false)
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      aria-label={`Open seller photo ${index + 1} full size`}
+      className="group relative aspect-square w-full overflow-hidden rounded-lg border border-line bg-surface-2 transition-colors hover:border-brand"
+    >
+      {failed ? (
+        <span className="grid h-full w-full place-items-center px-1 text-center text-[9.5px] leading-tight font-medium text-ink-faint">
+          No image
+        </span>
+      ) : (
+        <img
+          src={url}
+          alt={`Seller photo ${index + 1}`}
+          loading="lazy"
+          onError={() => setFailed(true)}
+          className="h-full w-full object-cover transition-transform duration-200 ease-out-soft group-hover:scale-[1.04]"
+        />
+      )}
+      <span className="absolute top-1 left-1 rounded bg-ink/55 px-1.5 py-0.5 text-[10px] font-medium text-white">
+        {index + 1}
+      </span>
+    </button>
   )
 }
 

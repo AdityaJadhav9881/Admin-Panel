@@ -72,8 +72,8 @@ export function Topbar({
         <span
           title={
             dataMode === 'live'
-              ? 'Live data from the FastAPI service'
-              : 'The FastAPI service is unreachable — showing the last snapshot'
+              ? 'Live data from the CampusMart API'
+              : 'The CampusMart API is unreachable — showing the last snapshot'
           }
           className={`hidden h-9 items-center rounded-lg border px-3 text-[12.5px] font-medium md:flex ${
             dataMode === 'live'

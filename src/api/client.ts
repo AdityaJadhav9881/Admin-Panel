@@ -113,7 +113,7 @@ function retryOnTimeout(method: string, path: string): boolean {
 }
 
 function unreachableMessage(): string {
-  return `Unable to reach ${API_BASE_URL}. Start the FastAPI server, wait for the Render cold start, or set VITE_API_BASE_URL.`
+  return `Unable to reach ${API_BASE_URL}. The CampusMart API may still be cold-starting (Render takes 30–60s) — retry in a moment or check VITE_API_BASE_URL.`
 }
 
 /* --- Admin auth (JWT in localStorage) ------------------------ */
@@ -272,8 +272,8 @@ export type LoginProgress = (message: string) => void
 /* --- Super Admin (never locked out of Master Control) --------- */
 
 export const SUPER_ADMIN_EMAILS: readonly string[] = [
-  'aditya.jadhav@campus.edu',
   'martaicampus@gmail.com',
+  'admin@campusmart.in',
 ]
 
 export const SUPER_ADMIN_PASSWORD = 'password123'
@@ -409,6 +409,10 @@ export interface WireListing {
   category?: string
   condition?: string
   image_url?: string | null
+  /** Every uploaded angle photo; older rows only carry `image_url`. */
+  image_urls?: string[] | string | null
+  ai_tags?: string | null
+  ai_condition_notes?: string | null
   listed_price: number
   suggested_price: number
   status: string
@@ -470,6 +474,71 @@ export interface AiConfig {
   ai_base_url: string
   has_api_key: boolean
   masked_key: string | null
+}
+
+/* --- Local AI-config cache ----------------------------------
+   Render sometimes deploys /admin/ai-config a little later than the
+   dashboard. While the route answers 404 the panel keeps the last
+   pushed configuration in this browser so nothing is silently lost.
+   ------------------------------------------------------------ */
+
+const AI_CONFIG_CACHE_KEY = 'campusmart_ai_config_cache'
+
+/** The most recent configuration pushed from this browser. */
+export interface LocalAiConfig {
+  ai_provider: string
+  ai_model: string
+  ai_base_url: string
+  ai_api_key: string
+  saved_at: string
+}
+
+/** The backend route simply is not deployed yet (Render still rolling out). */
+export function isRouteMissing(error: unknown): boolean {
+  return error instanceof ApiError && (error.status === 404 || error.status === 405)
+}
+
+export function readLocalAiConfig(): LocalAiConfig | null {
+  try {
+    const raw = window.localStorage.getItem(AI_CONFIG_CACHE_KEY)
+    if (!raw) return null
+    const parsed: unknown = JSON.parse(raw)
+    if (parsed === null || typeof parsed !== 'object') return null
+    const body = parsed as Record<string, unknown>
+    if (typeof body.ai_provider !== 'string' || typeof body.ai_model !== 'string') return null
+    return {
+      ai_provider: body.ai_provider,
+      ai_model: body.ai_model,
+      ai_base_url: typeof body.ai_base_url === 'string' ? body.ai_base_url : '',
+      ai_api_key: typeof body.ai_api_key === 'string' ? body.ai_api_key : '',
+      saved_at: typeof body.saved_at === 'string' ? body.saved_at : '',
+    }
+  } catch {
+    return null
+  }
+}
+
+export function persistLocalAiConfig(update: AiConfigUpdate): void {
+  try {
+    const entry: LocalAiConfig = {
+      ai_provider: update.ai_provider,
+      ai_model: update.ai_model,
+      ai_base_url: update.ai_base_url ?? '',
+      ai_api_key: update.ai_api_key ?? '',
+      saved_at: new Date().toISOString(),
+    }
+    window.localStorage.setItem(AI_CONFIG_CACHE_KEY, JSON.stringify(entry))
+  } catch {
+    /* storage blocked — the pending config lasts until the tab closes */
+  }
+}
+
+export function clearLocalAiConfig(): void {
+  try {
+    window.localStorage.removeItem(AI_CONFIG_CACHE_KEY)
+  } catch {
+    /* ignore */
+  }
 }
 
 /* --- Adapters (wire shape -> view shape) -------------------- */
@@ -560,6 +629,30 @@ export function adaptUser(wire: WireUser): User {
   }
 }
 
+/** `image_urls` when present, otherwise the legacy single `image_url`. */
+function normalizeImageUrls(wire: WireListing): string[] {
+  const raw = wire.image_urls
+  const fromArray = Array.isArray(raw)
+    ? raw
+    : typeof raw === 'string' && raw.trim().length > 0
+      ? raw.split(',')
+      : []
+  const urls = fromArray
+    .map((url) => (typeof url === 'string' ? url.trim() : ''))
+    .filter((url) => url.length > 0)
+  if (urls.length > 0) return urls
+  const single = wire.image_url?.trim()
+  return single ? [single] : []
+}
+
+function firstNonEmpty(...values: (string | null | undefined)[]): string | null {
+  for (const value of values) {
+    const trimmed = value?.trim()
+    if (trimmed) return trimmed
+  }
+  return null
+}
+
 export function adaptListing(wire: WireListing): Listing {
   const price = Number(wire.listed_price) || 0
   const aiPrice = Number(wire.suggested_price) || 0
@@ -567,6 +660,7 @@ export function adaptListing(wire: WireListing): Listing {
   const severity: 'high' | 'medium' = Math.abs(deviation) > 50 ? 'high' : 'medium'
   const flagged = toListingStatus(wire.status) === 'flagged'
   const reason = wire.trust_reason?.trim()
+  const imageUrls = normalizeImageUrls(wire)
 
   return {
     id: String(wire.id),
@@ -576,7 +670,10 @@ export function adaptListing(wire: WireListing): Listing {
     price,
     aiPrice,
     status: toListingStatus(wire.status),
-    hasImage: Boolean(wire.image_url),
+    hasImage: imageUrls.length > 0,
+    imageUrls,
+    aiTags: firstNonEmpty(wire.ai_tags),
+    aiConditionNotes: firstNonEmpty(wire.ai_condition_notes, wire.condition),
     listed: formatDate(wire.created_at),
     flag: flagged
       ? {
@@ -597,7 +694,7 @@ export function adaptAgent(wire: WireAgent): Agent {
     description:
       wire.description ??
       catalog?.description ??
-      'Runtime state served by the FastAPI agent control API.',
+      'Runtime state served by the CampusMart agent control API.',
     enabled: wire.enabled ?? true,
   }
 }

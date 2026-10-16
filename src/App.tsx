@@ -19,6 +19,7 @@ import {
   type AdminSession,
   type LoginProgress,
 } from './api/client'
+import { probeImageSamples, runHealthProbes } from './api/health'
 import { LoginView } from './components/auth/LoginView'
 import { Sidebar } from './components/layout/Sidebar'
 import { Topbar } from './components/layout/Topbar'
@@ -31,13 +32,15 @@ import { OverviewView } from './components/views/OverviewView'
 import { SettingsView } from './components/views/SettingsView'
 import { UsersView, type UserFilter } from './components/views/UsersView'
 import {
-  PLACEHOLDER_SERVICES,
+  SERVICE_CATALOG,
+  issueServiceCount,
   overallServiceState,
   stateTone,
   type Agent,
   type FlaggedTransaction,
   type Listing,
   type OverviewMetrics,
+  type Service,
   type User,
   type UserStatus,
   type ViewId,
@@ -87,7 +90,11 @@ export default function App() {
   const [queue, setQueue] = useState<FlaggedTransaction[]>([])
   const [agents, setAgents] = useState<Agent[]>([])
   const [metrics, setMetrics] = useState<OverviewMetrics>(EMPTY_METRICS)
-  const services = PLACEHOLDER_SERVICES
+  /* Live probe rows — every state/latency is a real HTTP measurement. */
+  const [services, setServices] = useState<Service[]>(SERVICE_CATALOG)
+  const [probing, setProbing] = useState(false)
+  const probeSeq = useRef(0)
+  const listingsRef = useRef<Listing[]>([])
 
   /* --- User directory filters (shared with Overview) --------- */
   const [userQuery, setUserQuery] = useState('')
@@ -160,7 +167,7 @@ export default function App() {
         setAgents(liveAgents)
         setBackendConnected(true)
         setLoadError(null)
-        showToast('Live data loaded from the FastAPI service.', 'success')
+        showToast('Live data loaded from the CampusMart API.', 'success')
       } catch (error) {
         if (seq !== loadSeq.current) return
         // Expired/invalid JWT — drop back to the login gate instead of a dead shell.
@@ -169,7 +176,7 @@ export default function App() {
             // Super Admin fallback session: stay signed in, report the failure.
             setBackendConnected(false)
             setLoadError(
-              'Super Admin fallback session: the backend rejected the stored token, so live data cannot load. Sign in again once POST /auth/login accepts the account.',
+              'Super Admin fallback session: the backend rejected the stored token, so live data cannot load. Sign in again once the login service accepts the account.',
             )
             showToast('Fallback session active — live data is unavailable.', 'warning')
             return
@@ -186,7 +193,7 @@ export default function App() {
         showToast(
           initial
             ? `Unable to reach the API at ${API_HOST}. Use Retry Connection when the server is up.`
-            : 'Refresh failed — the FastAPI service is unreachable.',
+            : 'Refresh failed — the CampusMart API is unreachable.',
           'critical',
         )
       } finally {
@@ -213,13 +220,41 @@ export default function App() {
     })()
   }, [loadData, session])
 
+  /* --- Live server/API health probes ------------------------- */
+  useEffect(() => {
+    listingsRef.current = listings
+  }, [listings])
+
+  const runProbes = useCallback(async () => {
+    const seq = ++probeSeq.current
+    setProbing(true)
+    try {
+      const next = await runHealthProbes(probeImageSamples(listingsRef.current))
+      if (seq !== probeSeq.current) return
+      setServices(next)
+    } catch {
+      /* probes never reject — keep the last snapshot on a surprise failure */
+    } finally {
+      if (seq === probeSeq.current) setProbing(false)
+    }
+  }, [])
+
+  // Probe once the first data load lands, so Cloudinary has real photo URLs to test.
+  useEffect(() => {
+    if (!bootstrapped || !backendConnected) return
+    void (async () => {
+      await Promise.resolve()
+      await runProbes()
+    })()
+  }, [bootstrapped, backendConnected, runProbes])
+
   const handleLogin = useCallback(
     async (email: string, password: string, onProgress?: LoginProgress) => {
       const next = await loginAdmin(email, password, onProgress)
       persistAdminSession(next)
       if (next.fallback) {
         showToast(
-          'Super Admin fallback session opened — Master Control stays reachable without a backend JWT.',
+          'Super Admin fallback session opened — Master Control stays reachable without a live backend session.',
           'warning',
         )
       }
@@ -249,6 +284,9 @@ export default function App() {
       warmTimer.current = null
     }
     setWarming(false)
+    probeSeq.current += 1
+    setServices(SERVICE_CATALOG)
+    setProbing(false)
   }, [])
 
   const navigate = (next: ViewId) => {
@@ -395,13 +433,15 @@ export default function App() {
   const fraudAgentEnabled =
     agents.find((agent) => agent.id === 'trust_fraud_detection')?.enabled ?? true
   const overall = overallServiceState(services)
-  const issueCount = services.filter((service) => service.state !== 'operational').length
+  const issueCount = issueServiceCount(services)
   const health = {
     tone: stateTone[overall],
     label:
-      issueCount === 0
-        ? 'All systems operational'
-        : `${issueCount} service issue${issueCount === 1 ? '' : 's'}`,
+      overall === 'pending'
+        ? 'Awaiting first probe'
+        : issueCount === 0
+          ? 'All systems operational'
+          : `${issueCount} service issue${issueCount === 1 ? '' : 's'}`,
   }
   const backend = {
     connected: backendConnected,
@@ -487,7 +527,7 @@ export default function App() {
                 <div className="px-6 text-center">
                   <span className="mx-auto block h-8 w-8 animate-spin rounded-full border-2 border-line border-t-brand" />
                   <p className="mt-4 text-[14px] font-semibold text-ink">
-                    Connecting to the FastAPI service…
+                    Connecting to the CampusMart API…
                   </p>
                   <p className="mt-1 text-[13px] text-ink-muted">
                     Loading users, listings, agents and the flag queue from {API_HOST}.
@@ -504,8 +544,10 @@ export default function App() {
                   queue={queue}
                   agents={agents}
                   services={services}
+                  probing={probing}
                   onNavigate={navigate}
                   onAcknowledge={acknowledgeFlag}
+                  onRunProbes={() => void runProbes()}
                 />
               )}
 
@@ -539,7 +581,9 @@ export default function App() {
                   key="settings"
                   agents={agents}
                   services={services}
+                  probing={probing}
                   onToggleAgent={toggleAgent}
+                  onRunProbes={() => void runProbes()}
                   onToast={showToast}
                 />
               )}
