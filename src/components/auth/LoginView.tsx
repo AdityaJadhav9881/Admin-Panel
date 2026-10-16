@@ -115,7 +115,7 @@ export function LoginView({ onLogin }: LoginViewProps) {
                 autoComplete="username"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
-                placeholder="admin@campusmart.in"
+                placeholder="Enter admin email address"
                 className="mt-1.5 h-10 w-full rounded-lg border border-line bg-surface px-3 text-[13.5px] text-ink transition-colors placeholder:text-ink-faint hover:border-line-strong focus:border-brand"
               />
             </div>

@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import type { Agent, Service } from '../../data/mock'
 import { overallServiceState, stateLabel, stateTone } from '../../data/mock'
 import { PauseIcon, PlayIcon, RefreshIcon } from '../icons'
@@ -7,9 +8,11 @@ import { Panel } from '../ui/Panel'
 import { ServiceRow } from '../ui/ServiceRow'
 import { Toggle } from '../ui/Toggle'
 import type { ToastMessage } from '../ui/Toast'
+import { AdminProfilePanel } from './AdminProfilePanel'
 import { AiConfigPanel } from './AiConfigPanel'
 
 interface SettingsViewProps {
+  adminEmail: string
   agents: Agent[]
   services: Service[]
   probing: boolean
@@ -19,6 +22,7 @@ interface SettingsViewProps {
 }
 
 export function SettingsView({
+  adminEmail,
   agents,
   services,
   probing,
@@ -26,12 +30,19 @@ export function SettingsView({
   onRunProbes,
   onToast,
 }: SettingsViewProps) {
+  useEffect(() => {
+    if (window.location.hash.toLowerCase().includes('profile')) {
+      document.getElementById('admin-profile')?.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [])
   const activeAgents = agents.filter((agent) => agent.enabled).length
   const allActive = activeAgents === agents.length
   const overall = overallServiceState(services)
 
   return (
     <div className="view-enter space-y-6">
+      <AdminProfilePanel adminEmail={adminEmail} onToast={onToast} />
+
       <AiConfigPanel onToast={onToast} />
 
       <Panel

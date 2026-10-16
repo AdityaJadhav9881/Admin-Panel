@@ -1,4 +1,5 @@
 import type { ComponentType } from 'react'
+import { getAdminAccount } from '../../api/client'
 import type { ViewId } from '../../data/mock'
 import {
   AgentsIcon,
@@ -20,7 +21,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'overview', label: 'Overview', icon: OverviewIcon },
   { id: 'listings', label: 'Listings & Moderation', icon: TagIcon },
   { id: 'users', label: 'Users', icon: UsersIcon },
-  { id: 'settings', label: 'AI & API', icon: AgentsIcon },
+  { id: 'settings', label: 'Settings & Profile', icon: AgentsIcon },
 ]
 
 interface SidebarProps {
@@ -133,36 +134,48 @@ export function Sidebar({
         </nav>
 
         <div className="mt-auto border-t border-rail-line p-4">
-          <div className="rounded-lg bg-white/[0.04] p-3">
-            <div className="flex items-center gap-3">
-              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-brand/20 text-[#9db9ff]">
-                <ShieldIcon size={18} />
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-[13px] font-medium text-rail-ink">
-                  CampusMart Admin
-                </p>
-                <p className="truncate text-[11.5px] text-rail-muted">Super Admin</p>
+          {(() => {
+            const adminAccount = getAdminAccount(adminEmail)
+            return (
+              <div className="rounded-lg bg-white/[0.04] p-3 transition-colors hover:bg-white/[0.07]">
+                <button
+                  type="button"
+                  onClick={() => onNavigate('settings')}
+                  className="flex w-full items-center gap-3 text-left focus:outline-none"
+                  title="Open Admin Profile & Settings"
+                >
+                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-brand/20 text-[#9db9ff]">
+                    <ShieldIcon size={18} />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[13px] font-medium text-rail-ink">
+                      {adminAccount.name}
+                    </p>
+                    <p className="truncate text-[11.5px] text-rail-muted">
+                      {adminAccount.roleTitle}
+                    </p>
+                  </div>
+                </button>
+                {adminEmail && (
+                  <p
+                    className="mt-2 truncate px-1 text-[11.5px] text-rail-muted"
+                    title={adminEmail}
+                  >
+                    {adminEmail}
+                  </p>
+                )}
+                <button
+                  type="button"
+                  onClick={onSignOut}
+                  aria-label="Sign out of the admin dashboard"
+                  className="mt-2.5 flex h-8 w-full items-center justify-center gap-2 rounded-lg border border-rail-line text-[12.5px] font-medium text-rail-muted transition-colors hover:border-[#3a4660] hover:bg-white/[0.06] hover:text-rail-ink"
+                >
+                  <SignOutIcon size={14} />
+                  Sign out
+                </button>
               </div>
-            </div>
-            {adminEmail && (
-              <p
-                className="mt-2 truncate px-1 text-[11.5px] text-rail-muted"
-                title={adminEmail}
-              >
-                {adminEmail}
-              </p>
-            )}
-            <button
-              type="button"
-              onClick={onSignOut}
-              aria-label="Sign out of the admin dashboard"
-              className="mt-2.5 flex h-8 w-full items-center justify-center gap-2 rounded-lg border border-rail-line text-[12.5px] font-medium text-rail-muted transition-colors hover:border-[#3a4660] hover:bg-white/[0.06] hover:text-rail-ink"
-            >
-              <SignOutIcon size={14} />
-              Sign out
-            </button>
-          </div>
+            )
+          })()}
           <p className="mt-3 flex items-center gap-2 px-1 text-[11.5px] text-rail-muted">
             <span
               className={`h-1.5 w-1.5 rounded-full ${backend.connected ? 'bg-success' : 'bg-ink-faint'}`}

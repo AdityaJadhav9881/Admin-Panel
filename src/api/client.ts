@@ -269,24 +269,157 @@ export const api = {
 /** Receives human-readable progress lines while a sign-in attempt works. */
 export type LoginProgress = (message: string) => void
 
-/* --- Super Admin (never locked out of Master Control) --------- */
+/* --- Authorized Administrators & Credentials ----------------- */
 
-export const SUPER_ADMIN_EMAILS: readonly string[] = [
-  'martaicampus@gmail.com',
-  'admin@campusmart.in',
+export interface AdminAccount {
+  email: string
+  defaultPassword: string
+  name: string
+  role: 'super_admin' | 'admin'
+  roleTitle: string
+}
+
+export const ADMIN_ACCOUNTS: readonly AdminAccount[] = [
+  {
+    email: 'adityajadhav0167@gmail.com',
+    defaultPassword: 'Jadhav@2007',
+    name: 'CampusMart Admin',
+    role: 'super_admin',
+    roleTitle: 'Super Admin (Master Control)',
+  },
+  {
+    email: 'sakshisutar612@gmail.com',
+    defaultPassword: 'Campus@2026',
+    name: 'Sakshi Sutar',
+    role: 'admin',
+    roleTitle: 'Marketplace Administrator',
+  },
+  {
+    email: 'panaskaranjali11@gmail.com',
+    defaultPassword: 'Campus@2026',
+    name: 'Anjali Panaskar',
+    role: 'admin',
+    roleTitle: 'Marketplace Administrator',
+  },
+  {
+    email: 'sanskrutipatil212006@gmail.com',
+    defaultPassword: 'Campus@2026',
+    name: 'Sanskruti Patil',
+    role: 'admin',
+    roleTitle: 'Marketplace Administrator',
+  },
+  {
+    email: 'martaicampus@gmail.com',
+    defaultPassword: 'password123',
+    name: 'CampusMart Super Admin',
+    role: 'super_admin',
+    roleTitle: 'Super Admin',
+  },
 ]
 
-export const SUPER_ADMIN_PASSWORD = 'password123'
+export const SUPER_ADMIN_EMAILS: readonly string[] = [
+  'adityajadhav0167@gmail.com',
+  'martaicampus@gmail.com',
+]
 
 const FALLBACK_TOKEN_PREFIX = 'super-admin-fallback'
+const ADMIN_PASSWORD_OVERRIDES_KEY = 'campusmart_admin_passwords'
+
+export function getExpectedPassword(email: string): string | null {
+  const normalized = email.trim().toLowerCase()
+  try {
+    const raw = window.localStorage.getItem(ADMIN_PASSWORD_OVERRIDES_KEY)
+    if (raw) {
+      const parsed = JSON.parse(raw) as Record<string, string>
+      if (typeof parsed[normalized] === 'string' && parsed[normalized].length > 0) {
+        return parsed[normalized]
+      }
+    }
+  } catch {
+    /* storage blocked */
+  }
+  const match = ADMIN_ACCOUNTS.find((acc) => acc.email.toLowerCase() === normalized)
+  return match ? match.defaultPassword : null
+}
+
+export function saveAdminPassword(email: string, newPassword: string): void {
+  const normalized = email.trim().toLowerCase()
+  try {
+    const raw = window.localStorage.getItem(ADMIN_PASSWORD_OVERRIDES_KEY)
+    const store: Record<string, string> = raw ? (JSON.parse(raw) as Record<string, string>) : {}
+    store[normalized] = newPassword
+    window.localStorage.setItem(ADMIN_PASSWORD_OVERRIDES_KEY, JSON.stringify(store))
+  } catch {
+    /* storage blocked */
+  }
+}
+
+export function getAdminAccount(email: string): AdminAccount {
+  const normalized = email.trim().toLowerCase()
+  const match = ADMIN_ACCOUNTS.find((acc) => acc.email.toLowerCase() === normalized)
+  if (match) return match
+  const superAdmin = isSuperAdminEmail(normalized)
+  return {
+    email: normalized,
+    defaultPassword: '',
+    name: 'CampusMart Admin',
+    role: superAdmin ? 'super_admin' : 'admin',
+    roleTitle: superAdmin ? 'Super Admin' : 'Administrator',
+  }
+}
 
 export function isSuperAdminEmail(email: string): boolean {
   const normalized = email.trim().toLowerCase()
   return SUPER_ADMIN_EMAILS.some((candidate) => candidate === normalized)
 }
 
+export function isProtectedAdminEmail(email: string): boolean {
+  const normalized = email.trim().toLowerCase()
+  return ADMIN_ACCOUNTS.some((acc) => acc.email.toLowerCase() === normalized)
+}
+
+export function isValidAdminCredentials(email: string, password: string): boolean {
+  const expected = getExpectedPassword(email)
+  return expected !== null && expected === password
+}
+
 export function isSuperAdminCredentials(email: string, password: string): boolean {
-  return isSuperAdminEmail(email) && password === SUPER_ADMIN_PASSWORD
+  return isSuperAdminEmail(email) && isValidAdminCredentials(email, password)
+}
+
+export async function changeAdminPassword(
+  email: string,
+  currentPassword: string,
+  newPassword: string,
+): Promise<{ success: boolean; message: string }> {
+  const normalized = email.trim().toLowerCase()
+  const expected = getExpectedPassword(normalized)
+
+  if (expected && expected !== currentPassword) {
+    throw new ApiError(400, 'Current password does not match our records.')
+  }
+
+  if (newPassword.length < 8) {
+    throw new ApiError(400, 'New password must be at least 8 characters long.')
+  }
+
+  if (currentPassword === newPassword) {
+    throw new ApiError(400, 'New password must be different from your current password.')
+  }
+
+  saveAdminPassword(normalized, newPassword)
+
+  // Best-effort notification to backend if endpoint exists
+  try {
+    await api.patch('/admin/users/self/password', {
+      current_password: currentPassword,
+      new_password: newPassword,
+    })
+  } catch {
+    /* route may still be syncing on Render */
+  }
+
+  return { success: true, message: 'Password updated successfully.' }
 }
 
 /**
@@ -337,53 +470,57 @@ function isBlockingFailure(error: unknown): boolean {
 /**
  * POST /auth/login — returns a session whose JWT is persisted by the caller.
  *
- * Super Admin safety net (demo Super Admin credentials only):
- *   1. A 403 usually means the account row was flipped to `blocked` during
- *      moderation testing — PATCH it back to `active` through the admin API,
- *      then retry the login.
- *   2. If sign-in still fails with 403 / timeout / unreachable host, open a
- *      local Super Admin session so the administrator is never locked out.
+ * Primary & Authorized Administrator safety net:
+ *   1. Tries the FastAPI backend POST /auth/login.
+ *   2. If backend rejects with 403, attempts unblockSuperAdminAccount for super-admins.
+ *   3. If credentials match any authorized admin, opens an administrative session so
+ *      authorized personnel are never locked out of Master Control.
  */
 export async function loginAdmin(
   email: string,
   password: string,
   onProgress?: LoginProgress,
 ): Promise<AdminSession> {
+  const normalized = email.trim().toLowerCase()
   const post = async (): Promise<AdminSession> => {
-    const payload = await api.post<unknown>(endpoints.login, { email, password })
+    const payload = await api.post<unknown>(endpoints.login, { email: normalized, password })
     const token = extractToken(payload)
     if (!token) {
       throw new ApiError(0, 'Login reached the server but no access token was returned.')
     }
-    return { token, email }
+    return { token, email: normalized }
   }
 
-  const superAdmin = isSuperAdminCredentials(email, password)
+  const authorized = isValidAdminCredentials(normalized, password)
+  const superAdmin = isSuperAdminCredentials(normalized, password)
 
   try {
     return await post()
   } catch (error) {
-    if (!superAdmin || !(error instanceof ApiError) || error.status !== 403) throw error
-  }
+    if (!authorized) {
+      throw error
+    }
 
-  onProgress?.(
-    'Sign in was rejected with 403 — checking the user directory and re-activating the Super Admin account…',
-  )
-  const healed = await unblockSuperAdminAccount(email)
-  onProgress?.(
-    healed
-      ? 'Super Admin account re-activated in PostgreSQL — retrying sign in…'
-      : 'Super Admin account could not be re-activated from here — retrying sign in…',
-  )
+    if (superAdmin && error instanceof ApiError && error.status === 403) {
+      onProgress?.(
+        'Sign in was rejected with 403 — checking the user directory and re-activating the Super Admin account…',
+      )
+      const healed = await unblockSuperAdminAccount(normalized)
+      onProgress?.(
+        healed
+          ? 'Super Admin account re-activated in PostgreSQL — retrying sign in…'
+          : 'Super Admin account could not be re-activated from here — retrying sign in…',
+      )
 
-  try {
-    return await post()
-  } catch (error) {
-    if (!isBlockingFailure(error)) throw error
-    onProgress?.(
-      'Sign in is still blocked — opening a Super Admin session so Master Control stays reachable…',
-    )
-    return fallbackSuperAdminSession(email)
+      try {
+        return await post()
+      } catch (retryError) {
+        if (!isBlockingFailure(retryError)) throw retryError
+      }
+    }
+
+    onProgress?.('Authorized credentials verified — opening administrative session…')
+    return fallbackSuperAdminSession(normalized)
   }
 }
 

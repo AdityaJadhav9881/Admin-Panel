@@ -9,6 +9,7 @@ import {
   fetchListings,
   fetchOverview,
   fetchUsers,
+  isProtectedAdminEmail,
   isSuperAdminEmail,
   loginAdmin,
   persistAdminSession,
@@ -60,9 +61,19 @@ const VIEW_META: Record<ViewId, { title: string; subtitle: string }> = {
     subtitle: 'Review trust scores and block or unblock accounts',
   },
   settings: {
-    title: 'AI & API settings',
-    subtitle: 'Agent control and server health',
+    title: 'Settings & Profile',
+    subtitle: 'Admin profile, password security, AI engine config, and live probes',
   },
+}
+
+function getViewFromHash(): ViewId {
+  if (typeof window === 'undefined') return 'overview'
+  const hash = window.location.hash.replace(/^#\/?/, '').toLowerCase().trim()
+  if (hash === 'profile') return 'settings'
+  if (hash === 'overview' || hash === 'listings' || hash === 'users' || hash === 'settings') {
+    return hash as ViewId
+  }
+  return 'overview'
 }
 
 const EMPTY_METRICS: OverviewMetrics = {
@@ -74,15 +85,24 @@ const EMPTY_METRICS: OverviewMetrics = {
 /** How long a request may run in silence before the cold-start box appears. */
 const WARM_NOTICE_MS = 2000
 
-const PROTECTED_ADMIN_NOTICE = 'Super Admin (Protected) — this account cannot be blocked.'
+const PROTECTED_ADMIN_NOTICE = 'Protected Admin account — this user cannot be blocked.'
 
 export default function App() {
   /* --- Admin session (JWT gate) ----------------------------- */
   const [session, setSession] = useState<AdminSession | null>(() => readAdminSession())
 
-  /* --- View state ------------------------------------------- */
-  const [view, setView] = useState<ViewId>('overview')
+  /* --- View state with URL route syncing -------------------- */
+  const [view, setView] = useState<ViewId>(() => getViewFromHash())
   const [navOpen, setNavOpen] = useState(false)
+
+  useEffect(() => {
+    const handleHashChange = () => {
+      const next = getViewFromHash()
+      setView(next)
+    }
+    window.addEventListener('hashchange', handleHashChange)
+    return () => window.removeEventListener('hashchange', handleHashChange)
+  }, [])
 
   /* --- Single source of truth for every view ---------------- */
   const [users, setUsers] = useState<User[]>([])
@@ -292,6 +312,7 @@ export default function App() {
   const navigate = (next: ViewId) => {
     setView(next)
     setNavOpen(false)
+    window.location.hash = `#/${next}`
     window.scrollTo({ top: 0 })
   }
 
@@ -313,7 +334,7 @@ export default function App() {
   /* --- User actions (PATCH /admin/users/{id}/status) --------- */
   const toggleUserStatus = (user: User) => {
     const next: UserStatus = user.status === 'active' ? 'blocked' : 'active'
-    if (next === 'blocked' && isSuperAdminEmail(user.email)) {
+    if (next === 'blocked' && isProtectedAdminEmail(user.email)) {
       showToast(PROTECTED_ADMIN_NOTICE, 'warning')
       return
     }
@@ -484,6 +505,8 @@ export default function App() {
           dataMode={backendConnected ? 'live' : 'offline'}
           onRefresh={() => void loadData()}
           refreshing={refreshing}
+          adminEmail={session.email}
+          onOpenProfile={() => navigate('settings')}
         />
 
         <main className="mx-auto w-full max-w-[1440px] px-5 py-6 lg:px-8 lg:py-8">
@@ -579,6 +602,7 @@ export default function App() {
               {view === 'settings' && (
                 <SettingsView
                   key="settings"
+                  adminEmail={session.email}
                   agents={agents}
                   services={services}
                   probing={probing}

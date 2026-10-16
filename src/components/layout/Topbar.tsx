@@ -1,4 +1,6 @@
+import { getAdminAccount } from '../../api/client'
 import type { StatusTone } from '../../data/mock'
+import { initials } from '../../lib/format'
 import { MenuIcon, RefreshIcon } from '../icons'
 
 interface TopbarProps {
@@ -12,6 +14,8 @@ interface TopbarProps {
   /** Re-fetches live state from the backend. */
   onRefresh: () => void
   refreshing: boolean
+  adminEmail?: string
+  onOpenProfile?: () => void
 }
 
 export function Topbar({
@@ -23,6 +27,8 @@ export function Topbar({
   dataMode,
   onRefresh,
   refreshing,
+  adminEmail,
+  onOpenProfile,
 }: TopbarProps) {
   const healthTone: Record<StatusTone, string> = {
     success: 'bg-success',
@@ -83,9 +89,20 @@ export function Topbar({
         >
           {dataMode === 'live' ? 'Live API' : 'Offline'}
         </span>
-        <span className="grid h-9 w-9 place-items-center rounded-lg border border-line bg-surface text-[11.5px] font-semibold text-ink-muted">
-          CM
-        </span>
+        {(() => {
+          const account = getAdminAccount(adminEmail ?? '')
+          return (
+            <button
+              type="button"
+              onClick={onOpenProfile}
+              title={`Signed in as ${account.name} (${account.roleTitle}) · Click to open Profile & Settings`}
+              aria-label="Open Admin Profile & Settings"
+              className="grid h-9 w-9 place-items-center rounded-lg border border-line bg-surface text-[11.5px] font-semibold text-ink transition-colors hover:border-line-strong hover:bg-surface-2 focus:border-brand"
+            >
+              {initials(account.name)}
+            </button>
+          )
+        })()}
       </div>
     </header>
   )
