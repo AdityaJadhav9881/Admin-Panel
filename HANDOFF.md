@@ -1,6 +1,6 @@
 # HANDOFF — CampusMart AI Master Control (context for next session)
 
-_Last updated: 2026-10-15 (post-push of auth/agents/trust work). Read this file first in a new session; it is the full state snapshot._
+_Last updated: 2026-10-16 (post-push of super-admin lockout fix + Render cold-start UX). Read this file first in a new session; it is the full state snapshot._
 
 ## 1. Project
 
@@ -9,11 +9,17 @@ _Last updated: 2026-10-15 (post-push of auth/agents/trust work). Read this file 
 - **Git**: remote `origin` = `https://github.com/AdityaJadhav9881/Admin-Panel.git` (branch `main`, tracking `origin/main`). Working tree clean after last session.
   - `e83682e` Initial commit: CampusMart Master Control admin dashboard
   - `4cd7a0d` Add admin login gate, fix agent normalization and trust score scale
+  - `0fa92e5` Update HANDOFF with post-push state and verification notes
+  - `0f04445` Add multi-provider AI key config panel and switch prices to INR
+  - `05e5e4e` Unblock super-admin login and add Render cold-start warmup UX
 - **Stack**: React 19 + TypeScript ~6.0 + Vite 8 + Tailwind v4 (`@tailwindcss/vite`), linting via `oxlint` (`.oxlintrc.json`: `react/rules-of-hooks: error`, `react/only-export-components: warn`).
 - **tsconfig constraints**: `noUnusedLocals`, `noUnusedParameters`, `erasableSyntaxOnly` (no constructor parameter properties), `"types": ["vite/client"]`.
 - **Reference docs**: two philosophy `.txt` files in the project root (INFINITY DESIGN). Key principles applied throughout: neutral foundation, controlled accent, semantic color, progressive disclosure, no dead ends, honest data labelling (placeholder values are always labelled as such).
 - **Live mode**: `USE_MOCK_DATA = false`; the dashboard reads the FastAPI contract on Render (`VITE_API_BASE_URL=https://campusmart-api-zia4.onrender.com` in `.env`; `.env` is gitignored, only `.env.example` is tracked). Mock seed arrays were deleted; only `PLACEHOLDER_SERVICES` (service-health rows, latency `null`) remains static and is labelled as not-yet-wired in the Settings view.
 - **Admin auth**: login gate via `POST /auth/login` (`{email, password}` → JWT). Token stored in `localStorage` (`campusmart_admin_token` / `campusmart_admin_email`); every `/admin/*` request sends `Authorization: Bearer <token>`. 401 clears the session and returns to the login screen. Demo helper on the login card fills `aditya.jadhav@campus.edu` / `password123` (still validated by the backend). Sign out button lives in the sidebar footer admin card.
+- **Super Admin safety net** (demo creds only — `aditya.jadhav@campus.edu` **or** `martaicampus@gmail.com` + `password123`, helpers `isSuperAdminCredentials`/`isSuperAdminEmail`): `loginAdmin` (a) on **403** self-heals by `GET /admin/users` → `PATCH /admin/users/{id}/status {status:'active'}` (unblocks the row that moderation testing flipped) → retries `POST /auth/login` once; (b) if that retry still fails with 403 / 408 timeout / unreachable host / 429 / 5xx it opens a **fallback session** (`AdminSession.fallback`, persisted as `campusmart_admin_fallback`) so the administrator is never locked out. A `fallback` session's 401 on `/admin/*` does **not** log the user out — it shows the `loadError` banner instead. Progress lines stream to the login card via the `onProgress` callback.
+- **Transport**: `REQUEST_TIMEOUT_MS = 75_000` (AbortController) + `REQUEST_RETRIES = 1` with 1s backoff. Retried on connection failure and 408/429/500/502/503/504 for every method; a *timeout* is only retried for safe methods (`GET`/`HEAD`/`OPTIONS` and `POST /auth/login`) because a timed-out write may still land.
+- **Cold-start UX**: any `loadData` call (and the login submit) starts a 2s watch; if the server is still silent the UI swaps in `ConnectingBox` ("Connecting to CampusMart Cloud Server — Hang tight! …") instead of failing early.
 
 ## 2. Commands
 
@@ -40,17 +46,17 @@ npm run dev         # vite dev server
 
 `src/App.tsx` owns ALL state; views are presentational with callback props (handlers are sync wrappers around async mutations via `withMutation` — single-flight guard `mutationInFlight` ref).
 
-- Auth: `session` (`AdminSession | null` from `readAdminSession()`); `!session` → full-page `LoginView`; `handleLogin` → `loginAdmin` + `persistAdminSession` + `setSession`; `handleSignOut` clears storage and resets all data state. Bootstrap effect only runs when `session` is set.
-- State: `view` (`ViewId`), `navOpen`, `users`, `listings`, `queue`, `agents`, `metrics` (`OverviewMetrics` from `/admin/overview`), `services` (`PLACEHOLDER_SERVICES`, constant), `userQuery`, `userFilter`, `backendConnected`, `bootstrapped`, `refreshing`, `loadError`, `toast` (`showToast` via ref timer).
+- Auth: `session` (`AdminSession | null` from `readAdminSession()`); `!session` → full-page `LoginView`; `handleLogin(email, password, onProgress?)` → `loginAdmin` + `persistAdminSession` + `setSession` (+ warning toast when `next.fallback`); `handleSignOut` clears storage, resets all data state and `warming`. Bootstrap effect only runs when `session` is set.
+- State: `view` (`ViewId`), `navOpen`, `users`, `listings`, `queue`, `agents`, `metrics` (`OverviewMetrics` from `/admin/overview`), `services` (`PLACEHOLDER_SERVICES`, constant), `userQuery`, `userFilter`, `backendConnected`, `bootstrapped`, `refreshing`, `loadError`, `warming` + `warmTimer` ref (2s cold-start watch), `toast` (`showToast` via ref timer).
 - Derived: `flaggedListings`, `pausedAgents`, `fraudAgentEnabled` (looks up agent id `trust_fraud_detection`), `overall`/`health` (trust band), `backend` (`{connected, label}` with `API_HOST`).
-- Bootstrap: `loadData({ initial })` in a `useCallback` — `Promise.all([fetchOverview, fetchUsers, fetchListings, fetchAgents])`; stale-response guard via `loadSeq` ref. Initial effect yields one microtask before calling it (`await Promise.resolve()` first) to satisfy `react/set-state-in-effect`. On `ApiError` 401: clear session → login gate. On other failure: `loadError` banner + critical toast; on success of manual refresh: success toast.
+- Bootstrap: `loadData({ initial })` in a `useCallback` (deps `[session, showToast]`) — `Promise.all([fetchOverview, fetchUsers, fetchListings, fetchAgents])`; stale-response guard via `loadSeq` ref; the 2s warm watch is owned by whichever call holds the current `seq` (its cleanup lives inside `if (seq === loadSeq.current)`). Initial effect yields one microtask before calling it (`await Promise.resolve()` first) to satisfy `react/set-state-in-effect`. On `ApiError` 401: **fallback session → `loadError` banner, stay signed in**; otherwise clear session → login gate. On other failure: `loadError` banner + critical toast; on success of manual refresh: success toast.
 - Mutations (all async, error → critical toast, state updated from requested change after server ack):
-  - Block/Unblock & Ban seller → `setUserStatus(id, status)` → `PATCH /admin/users/{id}/status`
+  - Block/Unblock & Ban seller → `setUserStatus(id, status)` → `PATCH /admin/users/{id}/status` — **both are guarded**: a Super Admin email can never be set to `blocked` (App toast + `UsersView` disables the Block button)
   - Approve → `apiApproveListing(id)` → `PATCH /admin/listings/{id}/approve`; clears local flag, decrements `metrics.flaggedCount` when the listing was flagged
   - Delete → `removeListing(id)` → `DELETE /admin/listings/{id}`; removes listing, then silently re-fetches users+listings (server applies the trust penalty)
   - Agent toggle → `setAgentEnabled(key, enabled)` → `PATCH /admin/ai-agents/{key}` body `{ enabled: boolean }`
   - Acknowledge flag is **session-local** (no backend endpoint); decrements `metrics.flaggedCount`; OverviewView copy says so honestly.
-- UI states: `!session` → LoginView; `!bootstrapped` → spinner panel; `loadError && bootstrapped` → critical banner with **Retry Connection** button (calls `loadData()`); Topbar chip shows `Live API` / `Offline`; `Refresh data` button in Topbar always available.
+- UI states: `!session` → LoginView; `!bootstrapped` → spinner panel **or** `ConnectingBox` once `warming`; `bootstrapped && warming` → `ConnectingBox` above the view (slow manual refresh); `loadError && bootstrapped` → critical banner with **Retry Connection** button (calls `loadData()`); Topbar chip shows `Live API` / `Offline`; `Refresh data` button in Topbar always available. On the login card the box appears after 2s (`SLOW_NOTICE_MS`) or as soon as `loginAdmin` emits progress.
 - **Trust score scale**: Postgres uses **0.0–5.0**. `trustBand`: `>=4.0` High/success, `>=2.5` Moderate/warning, else Low/critical. Bar width via `trustPercent(score)` = `(score/5)*100` clamped. Display via `formatTrustScore` (`toFixed(1)`). `LISTING_DELETE_TRUST_PENALTY = 0.5` (was 8 on the old 0–100 scale).
 - **AI agents payload**: `GET /admin/ai-agents` may return `{ key: boolean, ... }` or `[{key, enabled}, ...]` (or `{data:[]}`). `adaptAgents` always merges runtime state onto `AGENT_CATALOG` (3 core agents): `listing_intelligence`, `price_prediction`, `trust_fraud_detection` — so Overview/Settings never show "0 of 0 active".
 
@@ -58,14 +64,14 @@ npm run dev         # vite dev server
 
 | File | Role |
 |---|---|
-| `src/App.tsx` | Shell + session gate + all state/handlers/loadData; renders LoginView or Sidebar/Topbar/views/Toast/error banner/loading panel |
-| `src/api/client.ts` | API layer: `API_BASE_URL` (from `VITE_API_BASE_URL` in `.env`, default `http://127.0.0.1:8000`), `API_HOST`, `USE_MOCK_DATA = false`, `ApiError` (fields not param-props), `endpoints` (`/auth/login`, `/admin/overview\|users\|listings\|ai-agents`), JWT helpers (`getAuthToken`, `readAdminSession`, `persistAdminSession`, `clearAdminSession`, `loginAdmin`), `request<T>()` (Bearer on `/admin/*`; 401 → friendly message), `api.get/post/patch/remove`, wire types (`WireUser/Listing/Agent/Overview/RecentFlag`), adapters (`adaptUser/Listing/Agent/Agents/Overview`, `asArray` accepts bare array or `{data:[]}`), `apiErrorMessage`, fetchers (`fetchOverview/Users/Listings/Agents`), mutations (`setUserStatus`, `approveListing`, `removeListing`, `setAgentEnabled`) |
+| `src/App.tsx` | Shell + session gate + all state/handlers/loadData (incl. 2s `warming` watch, super-admin block guards); renders LoginView or Sidebar/Topbar/views/Toast/error banner/loading panel |
+| `src/api/client.ts` | API layer: `API_BASE_URL` (from `VITE_API_BASE_URL` in `.env`, default `http://127.0.0.1:8000`), `API_HOST`, `USE_MOCK_DATA = false`, `ApiError` (fields not param-props), **transport** (`REQUEST_TIMEOUT_MS=75_000`, `REQUEST_RETRIES=1`, `fetchWithTimeout`, `RETRYABLE_STATUS`, `retryOnTimeout`), `endpoints` (`/auth/login`, `/admin/overview\|users\|listings\|ai-agents\|ai-config`), JWT helpers (`getAuthToken`, `readAdminSession` — reads `campusmart_admin_fallback`, `persistAdminSession`, `clearAdminSession`), **super-admin helpers** (`SUPER_ADMIN_EMAILS`, `SUPER_ADMIN_PASSWORD`, `isSuperAdminEmail`, `isSuperAdminCredentials`, `unblockSuperAdminAccount`, `fallbackSuperAdminSession`, `loginAdmin(email,password,onProgress?)`), `request<T>()` (Bearer on `/admin/*`; 401 → friendly message; timeout/network/5xx retried once), `api.get/post/patch/put/remove`, wire types (`WireUser/Listing/Agent/Overview/RecentFlag`), adapters (`adaptUser/Listing/Agent/Agents/Overview`, `asArray` accepts bare array or `{data:[]}`), `apiErrorMessage`, fetchers (`fetchOverview/Users/Listings/Agents/AiConfig`), mutations (`setUserStatus`, `approveListing`, `removeListing`, `setAgentEnabled`, `saveAiConfig`) |
 | `src/vite-env.d.ts` | `ImportMetaEnv` with `VITE_API_BASE_URL?` |
 | `.env` / `.env.example` | `VITE_API_BASE_URL=https://campusmart-api-zia4.onrender.com` |
 | `src/data/mock.ts` | Domain model (file name kept; seeds deleted): `ViewId`, `User`/`UserStatus`, `Listing`/`ListingStatus`/`ListingCategory`(+`other`)/`ListingFlag`, `FlaggedTransaction`, `Agent`, `Service`, `OverviewMetrics` (`{totalActiveUsers, listingsToday, flaggedCount}` — no delta fields), `AGENT_CATALOG` (3 core snake_case ids + display metadata), `PLACEHOLDER_SERVICES` (latency `null`), `LISTING_DELETE_TRUST_PENALTY` (0.5), `categoryLabel`, `priceDeviation()`, `TRUST_SCALE_MAX`, `trustBand`, `trustPercent`, `formatTrustScore`, `overallServiceState`, `stateTone/Label` |
 | `src/lib/format.ts` | `initials()`, `formatMoney()`, `formatDate()` (ISO → "14 Oct 2026", returns raw on parse failure, "—" on empty) |
 | `src/index.css` | Tailwind v4 `@theme` tokens (see §4) + utilities + animations |
-| `src/components/auth/LoginView.tsx` | Full-page login gate; email/password → `onLogin`; error alert; "Fill demo admin credentials" helper (`aditya.jadhav@campus.edu` / `password123`) |
+| `src/components/auth/LoginView.tsx` | Full-page login gate; email/password → `onLogin(email, password, setProgress)`; error alert; `slow` flag after 2s + `progress` lines → `ConnectingBox`; "Fill demo admin credentials" helper (`aditya.jadhav@campus.edu` / `password123`) |
 | `src/components/icons.tsx` | Inline stroke icons incl. Tag/Book/Laptop/Chair/Bike/Box/Trash/Ban/Refresh/SignOut |
 | `src/components/layout/Sidebar.tsx` | Dark rail nav; props: `current`, `onNavigate`, `open`, `onClose`, `flaggedCount` (from `metrics.flaggedCount`), `flaggedListings`, `pausedAgents`, `backend {connected,label}`, `adminEmail`, `onSignOut`; footer admin card (email + Sign out button) + backend status dot (`bg-success` when connected) |
 | `src/components/layout/Topbar.tsx` | Props: `title`, `subtitle`, `onOpenMenu`, `health {tone,label}`, `onOpenHealth`, `dataMode: 'live' \| 'offline'` (chip "Live API"/"Offline"), `onRefresh`, `refreshing` (spinner + "Refreshing…" label) |
@@ -73,41 +79,44 @@ npm run dev         # vite dev server
 | `src/components/views/ListingsView.tsx` | Moderation: tabs All/Flagged(by AI, critical count)/Active/Sold; desktop table (`min-w-[920px]`, flagged rows tinted `bg-critical-soft/40`); mobile stacked cards; empty states; Delete/Ban `ConfirmDialog`s (delete dialog shows exact trust consequence on 0–5 scale); mounts FlagInspector; approve wrapper closes drawer (`setSelectedId(null)`); footer "Approving clears the flag · deleting lowers the seller's trust score." |
 | `src/components/listings/FlagInspector.tsx` | Right drawer z-[60], `max-w-[470px]`; Escape handler skips when `[data-confirm]` present; body scroll lock; sections: identity, pricing, seller (Open in Users, 0–5 trust bar), AI trust reason, record; footer: Approve (disabled unless `status==='flagged'`), Delete, Ban seller (disabled when seller blocked/missing) |
 | `src/components/listings/ListingThumb.tsx` | Category-tinted tile (incl. `other`) or dashed "No image" (`hasImage: false`); sizes sm/lg |
-| `src/components/views/UsersView.tsx` | Filters All/Active/Blocked + search; desktop table + mobile cards; Block/Unblock with ConfirmDialog; trust bar uses `trustPercent`/`trustBand`/`formatTrustScore` |
-| `src/components/views/SettingsView.tsx` | Agent toggles (live PATCH) + placeholder service health (footer says probes not wired); "{n} of {agents.length} active" badge |
-| `src/components/ui/*` | `Button` (variants: primary, outline, danger-outline, danger-quiet, danger-solid, ghost), `Badge`, `Toggle` (`role="switch"`), `Panel`, `MetricCard` (`context` optional), `ConfirmDialog` (z-[70], `data-confirm="true"`), `Toast` (z-40), `ServiceRow` |
+| `src/components/views/UsersView.tsx` | Filters All/Active/Blocked + search; desktop table + mobile cards; Block/Unblock with ConfirmDialog; trust bar uses `trustPercent`/`trustBand`/`formatTrustScore`; **Super Admin rows** (`isSuperAdminEmail`) get a `Super Admin (Protected)` brand badge and a disabled Block button (Unblock still works) |
+| `src/components/views/SettingsView.tsx` | Agent toggles (live PATCH) + placeholder service health (footer says probes not wired); "{n} of {agents.length} active" badge; mounts `AiConfigPanel` |
+| `src/components/views/AiConfigPanel.tsx` | Multi-provider AI key config — `GET/PUT /admin/ai-config`; the key itself never round-trips, only `masked_key` |
+| `src/components/ui/ConnectingBox.tsx` | Cold-start status box (`role="status"`): `WARMUP_MESSAGE` + optional `detail`, spinner, `warm-sweep` progress bar, elapsed-seconds counter |
+| `src/components/ui/*` | `Button` (variants: primary, outline, danger-outline, danger-quiet, danger-solid, ghost), `Badge`, `Toggle` (`role="switch"`), `Panel`, `MetricCard` (`context` optional), `ConfirmDialog` (z-[70], `data-confirm="true"`), `Toast` (z-40), `ServiceRow`, `ConnectingBox` |
 
 ## 4. Design tokens (src/index.css `@theme`)
 
 - Canvas/surface/line neutrals; ink `#1d2939`-range, ink-muted `#6b7688`, ink-faint
 - brand `#1d4ed8` (+ soft/strong variants), success/warning/critical (+ `-soft`)
 - rail (dark sidebar + login backdrop), tabular utility (tabular-nums)
-- Animations: `view-enter`, `toast-enter`, `drawer-enter`, `fade-in`, `animate-spin` (loading panel + refresh spinner); `--ease-out-soft`; `prefers-reduced-motion` block disables them
+- Animations: `view-enter`, `toast-enter`, `drawer-enter`, `fade-in`, `warm-sweep` (indeterminate cold-start bar, `warm-sweep` class), `animate-spin` (loading panel + refresh spinner); `--ease-out-soft`; `prefers-reduced-motion` block disables them
 - **z-order**: topbar 30, sidebar backdrop 40 / aside 50, FlagInspector 60, ConfirmDialog 70, toast 40
 
 ## 5. API contract adapters (src/api/client.ts)
 
 - Auth: `POST /auth/login` body `{email, password}`; token taken from `access_token` / `token` / `jwt` / `accessToken` (top-level or under `data`).
+- Super-admin self-heal: no new endpoint — reuses `GET /admin/users` + `PATCH /admin/users/{user_id}/status` with `{"status": "active"}`.
 - Users: `{id, name, email, trust_score, status, created_at}` → `User` (`trust_score→trustScore` on **0–5 scale**, `created_at→joined` via `formatDate`, `listings` derived in App from the listings response counts).
 - Listings: `{…, seller_id, listed_price→price, suggested_price→aiPrice, image_url→hasImage, trust_reason→flag}`; flag severity derived from price deviation (`>50%` → high); `detectedBy` inferred from reason keywords; unknown categories map to `other`.
 - Agents: dict of booleans or list of `{key, enabled}` → always merged with `AGENT_CATALOG` (`listing_intelligence` / `price_prediction` / `trust_fraud_detection`). PATCH sends `{ enabled: boolean }`.
 - Overview: `{total_active_users, listings_today, flagged_count, recent_flags[]}` → `OverviewMetrics` + `FlaggedTransaction[]` (lenient recent-flag adapter; severity defaults from confidence ≥85).
 - All list fetchers go through `asArray` (bare array or `{data: []}` envelope) except agents (special dual-shape parser).
 
-## 6. Verification status (as of 2026-10-15 / commit `4cd7a0d`)
+## 6. Verification status (as of 2026-10-16 / commit `05e5e4e`)
 
-- `npm run lint` clean (note: bootstrap effect must `await Promise.resolve()` before `loadData` or `react/set-state-in-effect` warns); `npm run build` clean (37 modules, ~290 kB JS / ~32 kB CSS).
-- Auth gate + agent dual-shape normalization + trust 0–5 scale: **lint/build verified only** in the last session — not yet Playwright-verified against the live Render API. Next session should smoke-test: login (demo fill + bad password), Sign out, agents "N of 3 active" from both payload shapes, trust bars on a 4.9 vs 3.1 user.
-- Playwright-verified **offline path** at 1440×920 (backend down, pre-auth-gate): loading panel → "Live data unavailable" banner + Retry Connection, `Offline` chip, "Backend unreachable" sidebar label, banner persists after Retry; only console errors are the expected `ERR_CONNECTION_REFUSED` network logs.
-- Playwright-verified **live path** against a local contract stand-in on `127.0.0.1:8000` with CORS + OPTIONS preflight (script deleted after; pre-auth-gate): Live API chip, overview metrics/queue from `/admin/overview`, Refresh data button, inspector open on live listing, Approve → toast + flagged tab count 2→1, agent toggle → toast, **zero console/page errors**.
-- Earlier (mock era) verifications still hold for pure presentation: mobile 390×844 stacked cards, no overflow, Escape/confirm-dialog layering, Open in Users prefill.
+- `npm run lint` clean (note: bootstrap effect must `await Promise.resolve()` before `loadData` or `react/set-state-in-effect` warns); `npm run build` clean (**39 modules**, ~305 kB JS / ~33 kB CSS).
+- Dev-server smoke check passed: `/` (contains "Master Control") plus `/src/App.tsx`, `LoginView.tsx`, `ConnectingBox.tsx`, `UsersView.tsx`, `index.css` all transform with HTTP 200.
+- **Lint/build + dev-server smoke only** for this session's work — not yet Playwright-verified: super-admin 403 self-heal (`GET /admin/users` → `PATCH …/status` → retry login), fallback session entry, 75s timeout/retry, `ConnectingBox` after 2s, `Super Admin (Protected)` badge + disabled Block button. Next session should test exactly those, plus login (demo fill + bad password) and Sign out.
+- Still true from earlier sessions: Playwright **offline path** (banner + Retry, `Offline` chip, "Backend unreachable", only expected `ERR_CONNECTION_REFUSED` logs); Playwright **live path** against a local contract stand-in with CORS + OPTIONS preflight (zero console/page errors); mobile 390×844 stacked cards, Escape/confirm-dialog layering, Open in Users prefill.
 
 ## 7. Next steps (suggested backlog — none started)
 
-1. Smoke-test auth + Render live path in the browser (login, Sign out, agent counts, 0–5 trust bars).
+1. Smoke-test in the browser: super-admin 403 self-heal, fallback session entry, `ConnectingBox` cold-start copy, `Super Admin (Protected)` badge/button, Sign out, agent counts, 0–5 trust bars.
 2. Wire a service-health endpoint (e.g. `GET /admin/health`) to replace `PLACEHOLDER_SERVICES` and the "not wired" footers in Overview/Settings.
 3. Backend endpoint for flag acknowledgement (currently session-local in OverviewView).
 4. Optional: disable action buttons while `mutationInFlight` (guard already ignores double-clicks; UI just doesn't grey out).
 5. Consider focus-trap/aria-focus management in the drawer (Escape + close button work; no full trap yet).
-6. CORS: ensure the Render FastAPI app enables CORS for the dashboard origin(s) (`http://localhost:5273`, production host) — required for login + PATCH preflights.
+6. CORS: ensure the Render FastAPI app enables CORS for the dashboard origin(s) (`http://localhost:5273`, production host) — required for login + PATCH preflights **and for the self-heal `GET /admin/users`/`PATCH …/status` calls**.
 7. Optional UX: refresh token / longer sessions; show admin name from the login response if the backend returns it.
+8. Backend: keep the super-admin row `active` (or add an explicit `is_super_admin` guard server-side) so a block can never be re-applied behind the dashboard's back.
