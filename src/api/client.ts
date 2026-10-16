@@ -295,7 +295,7 @@ export const ADMIN_ACCOUNTS: readonly AdminAccount[] = [
     roleTitle: 'Marketplace Administrator',
   },
   {
-    email: 'panaskaranjali11@gmail.com',
+    email: 'anjalipanaskar11@gmail.com',
     defaultPassword: 'Campus@2026',
     name: 'Anjali Panaskar',
     role: 'admin',
@@ -305,6 +305,13 @@ export const ADMIN_ACCOUNTS: readonly AdminAccount[] = [
     email: 'sanskrutipatil212006@gmail.com',
     defaultPassword: 'Campus@2026',
     name: 'Sanskruti Patil',
+    role: 'admin',
+    roleTitle: 'Marketplace Administrator',
+  },
+  {
+    email: 'shrutikapatil8237@gmail.com',
+    defaultPassword: 'Campus@2026',
+    name: 'Shrutika Patil',
     role: 'admin',
     roleTitle: 'Marketplace Administrator',
   },

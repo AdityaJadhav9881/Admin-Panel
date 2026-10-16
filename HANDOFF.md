@@ -19,8 +19,9 @@ _Last updated: 2026-10-16 (post-push of super-admin lockout fix + Render cold-st
 - **Admin auth & Authorized Accounts**: login gate via `POST /auth/login` (`{email, password}` → JWT). Token stored in `localStorage` (`campusmart_admin_token` / `campusmart_admin_email`); every `/admin/*` request sends `Authorization: Bearer <token>`. 401 clears the session and returns to the login screen. Sign out button lives in the sidebar footer admin card. Authorized admin accounts include:
   - `adityajadhav0167@gmail.com` / `Jadhav@2007` — Super Admin (Master Control), Display: `CampusMart Admin`
   - `sakshisutar612@gmail.com` / `Campus@2026` — Marketplace Administrator
-  - `panaskaranjali11@gmail.com` / `Campus@2026` — Marketplace Administrator
+  - `anjalipanaskar11@gmail.com` / `Campus@2026` — Marketplace Administrator
   - `sanskrutipatil212006@gmail.com` / `Campus@2026` — Marketplace Administrator
+  - `shrutikapatil8237@gmail.com` / `Campus@2026` — Marketplace Administrator
   - `martaicampus@gmail.com` / `password123` — Super Admin
 - **Administrative Safety Net & Password Change**: `loginAdmin` attempts `POST /auth/login`. On 403, it self-heals by unblocking the account via `PATCH /admin/users/{id}/status`. If backend fails with 401, timeout, or network hiccup, authorized credentials immediately open an administrative session. In Settings & Profile, administrators can update their password via `AdminProfilePanel` (persisted locally and synced with the backend).
 - **URL Route Synchronization**: hash routing supports `#/overview`, `#/listings`, `#/users`, `#/settings`, and `#/profile` (deep links to Profile & Password panel).
