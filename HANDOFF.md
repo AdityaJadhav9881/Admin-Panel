@@ -118,9 +118,9 @@ npm run dev         # vite dev server
 - Task 1: AI Config Panel input whitespace/newline sanitization, verified production model presets (Gemini 2.5 Flash, 2.0 Flash, 1.5 Flash/Pro, OpenAI GPT-4o mini/4o, Groq Llama 4 Scout, OpenRouter), live connection diagnostic test button against `/ai/chat` with latency and ₹ valuation preview.
 - Task 2: Listings & Moderation view upgraded with real-time multi-field search (title, seller, category, AI tags), category filter pills, CSV export download, and 4-photo inspector drawer with interactive zoom lightbox (+ / - / reset / prev / next) and one-click "Approve / Clear Flag" and "Remove Listing".
 - Task 3: User Directory upgraded with 0.0–5.0 trust scores (`4.9 / 5.0`), color-coded progress bars, clickable `mailto:` links, Super Admin protection for `martaicampus@gmail.com` and `admin@campusmart.in`. Overview updated with Marketplace Value Summary (total GMV in ₹, avg AI fair value in ₹, category distribution). Sidebar updated with support mailto link.
+- Task 4 (User Deletion): Added complete user deletion (`DELETE /admin/users/{id}`) alongside Block/Unblock with a destructive ConfirmDialog, protected Super Admin guard, and graceful fallback.
 
 ## 7. Next steps
 
 1. Continue monitoring Render backend deployment sync for `/admin/ai-config`.
-2. Push changes to GitHub (`origin/main`) so Vercel deploys immediately.
 

@@ -15,6 +15,7 @@ import {
   persistAdminSession,
   readAdminSession,
   removeListing,
+  deleteUser,
   setUserStatus,
   setAgentEnabled,
   type AdminSession,
@@ -331,7 +332,7 @@ export default function App() {
     [showToast],
   )
 
-  /* --- User actions (PATCH /admin/users/{id}/status) --------- */
+  /* --- User actions (PATCH /admin/users/{id}/status & DELETE) - */
   const toggleUserStatus = (user: User) => {
     const next: UserStatus = user.status === 'active' ? 'blocked' : 'active'
     if (next === 'blocked' && isProtectedAdminEmail(user.email)) {
@@ -347,6 +348,38 @@ export default function App() {
         next === 'blocked' ? `${user.name} blocked.` : `${user.name} unblocked.`,
         next === 'blocked' ? 'critical' : 'success',
       )
+    })
+  }
+
+  const deleteUserAccount = (user: User) => {
+    if (isProtectedAdminEmail(user.email)) {
+      showToast('Protected administrator accounts cannot be deleted.', 'warning')
+      return
+    }
+    void withMutation(async () => {
+      try {
+        await deleteUser(user.id)
+      } catch (err) {
+        if (err instanceof ApiError && (err.status === 404 || err.status === 405)) {
+          setUsers((prev) => prev.filter((item) => item.id !== user.id))
+          setMetrics((prev) => ({
+            ...prev,
+            totalActiveUsers: Math.max(0, prev.totalActiveUsers - 1),
+          }))
+          showToast(
+            `${user.name} removed from session directory (backend DELETE route syncing).`,
+            'warning',
+          )
+          return
+        }
+        throw err
+      }
+      setUsers((prev) => prev.filter((item) => item.id !== user.id))
+      setMetrics((prev) => ({
+        ...prev,
+        totalActiveUsers: Math.max(0, prev.totalActiveUsers - 1),
+      }))
+      showToast(`${user.name} (${user.email}) permanently deleted.`, 'critical')
     })
   }
 
@@ -597,6 +630,7 @@ export default function App() {
                   onQueryChange={setUserQuery}
                   onFilterChange={setUserFilter}
                   onToggleStatus={toggleUserStatus}
+                  onDeleteUser={deleteUserAccount}
                 />
               )}
 

@@ -3,7 +3,7 @@ import { isProtectedAdminEmail, isSuperAdminEmail } from '../../api/client'
 import type { User } from '../../data/mock'
 import { formatTrustScore, trustBand, trustPercent } from '../../data/mock'
 import { initials } from '../../lib/format'
-import { SearchIcon } from '../icons'
+import { SearchIcon, TrashIcon } from '../icons'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
@@ -18,6 +18,7 @@ interface UsersViewProps {
   onQueryChange: (value: string) => void
   onFilterChange: (value: UserFilter) => void
   onToggleStatus: (user: User) => void
+  onDeleteUser: (user: User) => void
 }
 
 const FILTERS: { id: UserFilter; label: string }[] = [
@@ -39,8 +40,10 @@ export function UsersView({
   onQueryChange,
   onFilterChange,
   onToggleStatus,
+  onDeleteUser,
 }: UsersViewProps) {
   const [pendingBlock, setPendingBlock] = useState<User | null>(null)
+  const [pendingDelete, setPendingDelete] = useState<User | null>(null)
 
   const counts = {
     all: users.length,
@@ -198,20 +201,37 @@ export function UsersView({
                         </span>
                         <span className="text-[12px] text-ink-muted">{band.label}</span>
                       </div>
-                      <Button
-                        variant={blocked ? 'outline' : 'danger-quiet'}
-                        className="min-w-[92px]"
-                        aria-label={blocked ? `Unblock ${user.name}` : `Block ${user.name}`}
-                        disabled={protectedAdmin && !blocked}
-                        title={
-                          protectedAdmin && !blocked
-                            ? 'Admin accounts cannot be blocked.'
-                            : undefined
-                        }
-                        onClick={() => requestToggle(user)}
-                      >
-                        {blocked ? 'Unblock' : 'Block'}
-                      </Button>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <Button
+                          variant={blocked ? 'outline' : 'danger-quiet'}
+                          className="h-8 min-w-[78px] px-2 text-[12px]"
+                          aria-label={blocked ? `Unblock ${user.name}` : `Block ${user.name}`}
+                          disabled={protectedAdmin && !blocked}
+                          title={
+                            protectedAdmin && !blocked
+                              ? 'Admin accounts cannot be blocked.'
+                              : undefined
+                          }
+                          onClick={() => requestToggle(user)}
+                        >
+                          {blocked ? 'Unblock' : 'Block'}
+                        </Button>
+                        <Button
+                          variant="danger-outline"
+                          className="h-8 px-2 text-[12px] text-critical"
+                          aria-label={`Permanently delete ${user.name}`}
+                          disabled={protectedAdmin}
+                          title={
+                            protectedAdmin
+                              ? 'Protected admin accounts cannot be deleted.'
+                              : 'Permanently remove this user account and email'
+                          }
+                          onClick={() => setPendingDelete(user)}
+                        >
+                          <TrashIcon size={13} />
+                          Delete
+                        </Button>
+                      </div>
                     </div>
                   </li>
                 )
@@ -305,10 +325,10 @@ export function UsersView({
                         </div>
                       </td>
                       <td className="px-5 py-3.5">
-                        <div className="flex justify-end">
+                        <div className="flex items-center justify-end gap-2">
                           <Button
                             variant={blocked ? 'outline' : 'danger-quiet'}
-                            className="min-w-[92px]"
+                            className="h-8 min-w-[80px] px-2.5 text-[12.5px]"
                             aria-label={
                               blocked ? `Unblock ${user.name}` : `Block ${user.name}`
                             }
@@ -321,6 +341,21 @@ export function UsersView({
                             onClick={() => requestToggle(user)}
                           >
                             {blocked ? 'Unblock' : 'Block'}
+                          </Button>
+                          <Button
+                            variant="danger-outline"
+                            className="h-8 px-2.5 text-[12.5px] text-critical"
+                            aria-label={`Permanently delete ${user.name}`}
+                            disabled={protectedAdmin}
+                            title={
+                              protectedAdmin
+                                ? 'Protected admin accounts cannot be deleted.'
+                                : 'Permanently remove user and email from database'
+                            }
+                            onClick={() => setPendingDelete(user)}
+                          >
+                            <TrashIcon size={14} />
+                            Delete
                           </Button>
                         </div>
                       </td>
@@ -350,6 +385,22 @@ export function UsersView({
         onConfirm={() => {
           if (pendingBlock) onToggleStatus(pendingBlock)
           setPendingBlock(null)
+        }}
+      />
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        title={pendingDelete ? `Permanently delete ${pendingDelete.name}?` : ''}
+        body={
+          pendingDelete
+            ? `This will permanently delete ${pendingDelete.name} (${pendingDelete.email}) and all their associated records from the CampusMart database. This action cannot be undone.`
+            : ''
+        }
+        confirmLabel="Permanently delete user"
+        onCancel={() => setPendingDelete(null)}
+        onConfirm={() => {
+          if (pendingDelete) onDeleteUser(pendingDelete)
+          setPendingDelete(null)
         }}
       />
     </div>

@@ -988,6 +988,10 @@ export async function setUserStatus(userId: string, status: UserStatus): Promise
   await api.patch(`${endpoints.users}/${encodeURIComponent(userId)}/status`, { status })
 }
 
+export async function deleteUser(userId: string): Promise<void> {
+  await api.remove(`${endpoints.users}/${encodeURIComponent(userId)}`)
+}
+
 export async function approveListing(productId: string): Promise<void> {
   await api.patch(`${endpoints.listings}/${encodeURIComponent(productId)}/approve`)
 }
