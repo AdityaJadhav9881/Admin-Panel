@@ -1,6 +1,6 @@
 # HANDOFF — CampusMart AI Master Control (context for next session)
 
-_Last updated: 2026-10-17 (post-implementation of Desktop & Mobile UI/UX Overhaul, Universal College Short Formatter, Fixed Table Column Layouts, and Mobile Bottom Quick Navigation). Read this file first in a new session; it is the authoritative, full state snapshot._
+_Last updated: 2026-10-17 (post-implementation of Live GET /admin/communications API Integration, Complete Elimination of Mock Student Data, Universal Adapter `adaptConnectionThread`, Clean Zero-Mock Empty States, and Zero-Config AI Configuration Engine). Read this file first in a new session; it is the authoritative, full state snapshot._
 
 ## 1. Project
 
@@ -23,7 +23,8 @@ _Last updated: 2026-10-17 (post-implementation of Desktop & Mobile UI/UX Overhau
   - `8c77526` God-Mode Administrative Edit & Override Capabilities (Users, Listings, Orders, and Chat Transcripts)
   - `16ff3f` Manage "Want to Buy" (WTB) Board, Seller Matching Engine, and Academic Branch/Year Moderation
   - `7bbf30d` Desktop & Mobile UI/UX Overhaul: Universal College Formatter, Table-Fixed Colgroup Layouts, Responsive Cards, and Mobile Quick-Nav
-  - `[current]` Zero-Config AI Configuration Engine: Streamlined Key-Only Slots, Auto-Detect Provider & Working Model Discovery (`POST /admin/ai-config/test-key`), and Prominent "🧪 Test & Auto-Discover Key" Diagnostic
+  - `f20e3bf` Zero-Config AI Configuration Engine: Streamlined Key-Only Slots, Auto-Detect Provider & Working Model Discovery (`POST /admin/ai-config/test-key`)
+  - `[current]` Wire ConnectionsView to live GET /admin/communications API and eliminate static mock student data
 - **Stack**: React 19 + TypeScript ~6.0 + Vite 8 + Tailwind v4 (`@tailwindcss/vite`), linting via `oxlint` (`.oxlintrc.json`: `react/rules-of-hooks: error`, `react/only-export-components: warn`).
 - **tsconfig constraints**: `noUnusedLocals`, `noUnusedParameters`, `erasableSyntaxOnly` (no constructor parameter properties), `"types": ["vite/client"]`.
 - **Reference docs**: two philosophy `.txt` files in the project root (INFINITY DESIGN). Key principles applied throughout: neutral foundation, controlled accent, semantic color, progressive disclosure, no dead ends, honest data labelling (placeholder values are always labelled as such).
@@ -100,12 +101,11 @@ npm run dev         # vite dev server
 | `src/components/views/WantedRequestsView.tsx` | **Campus Wanted Board (WTB) Operations Center**: Network metric cards (Total Requests, Urgent <24h, Matched with Seller, Fulfilled), multi-field search, Urgency pills, Match Status filters, Campus/Branch/Year dropdowns, **"Match with Seller" Modal** linking buyers to active listings, **"Edit Wanted Request" Slide-Over Drawer**, Fulfill toggle, Delete confirmation, and CSV Export |
 | `src/components/views/UsersView.tsx` | User directory: view mode toggle (`All Users Table` vs `🎓 Grouped by College`), bulk reassign campus bar with checkboxes, college filter dropdown, college hub accordion cards, `Edit` button on every user row/card opening `UserEditDrawer` |
 | `src/components/users/UserEditDrawer.tsx` | **Slide-Over God-Mode Student Editor**: Full Name, Email, Phone, Searchable CET Cell & All-India College Picker + Custom Override, "Also update college on all active listings by this student" checkbox, Trust score slider/input (`0.0–5.0`), Status toggle (`Active` | `Blocked`), Admin Password Reset with eye toggle, and Danger Zone permanent delete |
-| `src/components/views/ConnectionsView.tsx` | **Connections & Communications Intelligence Panel ("Who is in touch with whom")**: Top Network Metrics Bar, Interactive Connection Matrix, Order Handshake Editor (`OrderEditInlineForm` for final price, address, phone, payment method, order status), individual chat message deletion, and Official Admin Intervention Note input |
+| `src/components/views/ConnectionsView.tsx` | **Connections & Communications Intelligence Panel ("Who is in touch with whom")**: Live backend-connected network intelligence (`GET /admin/communications`), Top Network Metrics Bar (active pairs, same-campus vs cross-campus, order handshakes, call logs), Interactive Connection Matrix with zero mock data, Order Handshake Editor (`OrderEditInlineForm` with neutral placeholders), individual chat message deletion, and Official Admin Intervention Note input |
 | `src/components/views/SettingsView.tsx` | Agent runtime toggles, live server & API health probes with "Run Live Probe" button, `AdminProfilePanel` (session info & password change), and `AiConfigPanel` |
 | `src/components/views/AiConfigPanel.tsx` | **Zero-Config AI Engine & Multi-Key Load Balancer**: Streamlined Key-Only Slots (Gemini, Groq, OpenRouter, OpenAI), automatic provider detection & model discovery, prominent **"🧪 Test & Auto-Discover Key"** diagnostic (`POST /admin/ai-config/test-key`), and Bottom Action Bar with **Test Full Pool Failover** & **Save & Push Key Pool** |
 | `src/components/settings/AdminProfilePanel.tsx` | Authorized administrator profile management, session overview, and local/backend password change form |
 | `src/components/ui/ConnectingBox.tsx` | Cold-start status box with progress bar and elapsed timer |
-| `src/components/ui/*` | `Button`, `Badge`, `Toggle`, `Panel`, `MetricCard`, `ConfirmDialog`, `Toast`, `ServiceRow` |
 | `src/components/ui/*` | `Button`, `Badge`, `Toggle`, `Panel`, `MetricCard`, `ConfirmDialog`, `Toast`, `ServiceRow` |
 
 ## 4. Design Tokens (src/index.css `@theme`)
@@ -124,5 +124,5 @@ npm run dev         # vite dev server
 
 ## 6. Next Steps & Ongoing Monitor
 
-1. **Backend Deployment Sync**: Monitor Render deployment for `/admin/communications` (frontend provides graceful fallback aggregation from users, products and chats when endpoint is deploying).
-2. **CORS / Preflights**: Ensure production backend allows origin and handles `OPTIONS` for all admin endpoints.
+1. **Live Backend Feed**: `GET /admin/communications` is directly connected. When the database has active student chats or handshakes, they render immediately; during cold starts or before student conversations occur, the panel displays the zero-mock empty state ("No Live Student Connections Yet") without showing any fake or mock student accounts.
+2. **CORS / Preflights**: Production backend allows origin and handles `OPTIONS` for all admin endpoints.

@@ -46,8 +46,8 @@ interface OrderEditInlineFormProps {
 function OrderEditInlineForm({ thread, onSave, onCancel, onToast }: OrderEditInlineFormProps) {
   const currentOrder = thread.order
   const [finalPrice, setFinalPrice] = useState(String(currentOrder?.final_price ?? thread.product.price))
-  const [deliveryAddress, setDeliveryAddress] = useState(currentOrder?.delivery_address ?? 'Campus Central Library Lawn')
-  const [contactPhone, setContactPhone] = useState(currentOrder?.contact_phone ?? '+91 98221 04928')
+  const [deliveryAddress, setDeliveryAddress] = useState(currentOrder?.delivery_address ?? '')
+  const [contactPhone, setContactPhone] = useState(currentOrder?.contact_phone ?? '')
   const [paymentMethod, setPaymentMethod] = useState<'cash_on_meetup' | 'gpay_upi'>(
     (currentOrder?.payment_method as 'cash_on_meetup' | 'gpay_upi') ?? (thread.payment_method ?? 'cash_on_meetup'),
   )
@@ -119,6 +119,7 @@ function OrderEditInlineForm({ thread, onSave, onCancel, onToast }: OrderEditInl
           <input
             type="text"
             required
+            placeholder="e.g. Central Library Lawn / Hostel Gate"
             value={deliveryAddress}
             onChange={(e) => setDeliveryAddress(e.target.value)}
             className="mt-0.5 h-8 w-full rounded-md border border-line bg-surface px-2.5 text-[12px] text-ink"
@@ -129,6 +130,7 @@ function OrderEditInlineForm({ thread, onSave, onCancel, onToast }: OrderEditInl
           <input
             type="text"
             required
+            placeholder="e.g. +91 98765 43210"
             value={contactPhone}
             onChange={(e) => setContactPhone(e.target.value)}
             className="mt-0.5 h-8 w-full rounded-md border border-line bg-surface px-2.5 text-[12px] text-ink font-mono"
@@ -369,22 +371,28 @@ export function ConnectionsView({
             <span className="mx-auto grid h-11 w-11 place-items-center rounded-full bg-subtle text-ink-faint">
               <SearchIcon size={20} />
             </span>
-            <p className="mt-3.5 text-[14px] font-semibold text-ink">No connection threads found</p>
-            <p className="mx-auto mt-1.5 max-w-sm text-[13px] leading-relaxed text-ink-muted">
-              {normalizedQuery || collegeFilter !== 'all'
-                ? 'Nothing matches your current search criteria or campus filter.'
-                : 'No conversations currently active in this category.'}
+            <p className="mt-3.5 text-[14px] font-semibold text-ink">
+              {connections.length === 0 ? 'No Live Student Connections Yet' : 'No connection threads found'}
             </p>
-            <Button
-              className="mt-4"
-              onClick={() => {
-                setSearchQuery('')
-                setCollegeFilter('all')
-                setActiveTab('all')
-              }}
-            >
-              Reset Filters
-            </Button>
+            <p className="mx-auto mt-1.5 max-w-sm text-[13px] leading-relaxed text-ink-muted">
+              {connections.length === 0
+                ? 'Live buyer–seller negotiations, phone consultations, and order handshakes will appear here as students interact on the platform.'
+                : normalizedQuery || collegeFilter !== 'all'
+                  ? 'Nothing matches your current search criteria or campus filter.'
+                  : 'No conversations currently active in this category.'}
+            </p>
+            {connections.length > 0 && (
+              <Button
+                className="mt-4"
+                onClick={() => {
+                  setSearchQuery('')
+                  setCollegeFilter('all')
+                  setActiveTab('all')
+                }}
+              >
+                Reset Filters
+              </Button>
+            )}
           </div>
         ) : (
           <div className="divide-y divide-line">
