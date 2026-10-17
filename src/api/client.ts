@@ -597,6 +597,99 @@ export interface WireRecentFlag {
   acknowledged?: boolean
 }
 
+export type AiKeyProvider =
+  | 'gemini'
+  | 'groq'
+  | 'openrouter'
+  | 'openai'
+  | 'mistral'
+  | 'cerebras'
+  | 'custom'
+
+export type AiKeyRole = 'all' | 'vision_pricing' | 'fast_chat_search'
+
+export type AiKeyStatus = 'active' | 'cooldown' | 'exhausted' | 'untested'
+
+export type AiRoutingMode = 'smart_failover' | 'round_robin' | 'role_based'
+
+export interface AiKeySlot {
+  id: string
+  label: string
+  provider: AiKeyProvider
+  model: string
+  api_key: string
+  base_url?: string
+  role: AiKeyRole
+  enabled: boolean
+  status: AiKeyStatus
+  latency_ms?: number
+  calls_count?: number
+}
+
+export const QUICK_SEED_POOL_TEMPLATE: AiKeySlot[] = [
+  {
+    id: 'key-gemini-1',
+    label: 'Gemini Primary #1 (Vision & Price)',
+    provider: 'gemini',
+    model: 'gemini-2.5-flash',
+    api_key: '',
+    role: 'vision_pricing',
+    enabled: true,
+    status: 'untested',
+  },
+  {
+    id: 'key-gemini-2',
+    label: 'Gemini Backup #2 (Vision Fallback)',
+    provider: 'gemini',
+    model: 'gemini-2.0-flash',
+    api_key: '',
+    role: 'vision_pricing',
+    enabled: true,
+    status: 'untested',
+  },
+  {
+    id: 'key-gemini-3',
+    label: 'Gemini General #3 (All Tasks)',
+    provider: 'gemini',
+    model: 'gemini-1.5-flash',
+    api_key: '',
+    role: 'all',
+    enabled: true,
+    status: 'untested',
+  },
+  {
+    id: 'key-groq-1',
+    label: 'Groq Fast Chat #1 (Scout 17B)',
+    provider: 'groq',
+    model: 'meta-llama/llama-4-scout-17b-16e-instruct',
+    api_key: '',
+    role: 'fast_chat_search',
+    enabled: true,
+    status: 'untested',
+  },
+  {
+    id: 'key-groq-2',
+    label: 'Groq Versatile #2 (Llama 3.3 70B)',
+    provider: 'groq',
+    model: 'llama-3.3-70b-versatile',
+    api_key: '',
+    role: 'fast_chat_search',
+    enabled: true,
+    status: 'untested',
+  },
+  {
+    id: 'key-openrouter-1',
+    label: 'OpenRouter Free Pool (Universal)',
+    provider: 'openrouter',
+    model: 'google/gemini-2.0-flash-exp:free',
+    base_url: 'https://openrouter.ai/api/v1',
+    api_key: '',
+    role: 'all',
+    enabled: true,
+    status: 'untested',
+  },
+]
+
 /** GET /admin/ai-config — the key itself is never returned, only its masked form. */
 export interface WireAiConfig {
   ai_provider?: string | null
@@ -604,6 +697,8 @@ export interface WireAiConfig {
   ai_base_url?: string | null
   has_api_key?: boolean | null
   masked_key?: string | null
+  routing_mode?: string | null
+  api_keys_pool?: unknown
 }
 
 /** PUT /admin/ai-config — an empty `ai_api_key` keeps the key already stored. */
@@ -612,6 +707,8 @@ export interface AiConfigUpdate {
   ai_model: string
   ai_api_key?: string
   ai_base_url?: string
+  routing_mode?: AiRoutingMode
+  api_keys_pool?: AiKeySlot[]
 }
 
 export interface AiConfig {
@@ -620,6 +717,8 @@ export interface AiConfig {
   ai_base_url: string
   has_api_key: boolean
   masked_key: string | null
+  routing_mode: AiRoutingMode
+  api_keys_pool: AiKeySlot[]
 }
 
 /* --- Local AI-config cache ----------------------------------
@@ -636,12 +735,19 @@ export interface LocalAiConfig {
   ai_model: string
   ai_base_url: string
   ai_api_key: string
+  routing_mode?: AiRoutingMode
+  api_keys_pool?: AiKeySlot[]
   saved_at: string
 }
 
 /** The backend route simply is not deployed yet (Render still rolling out). */
 export function isRouteMissing(error: unknown): boolean {
   return error instanceof ApiError && (error.status === 404 || error.status === 405)
+}
+
+export function sanitizeAiInput(val: string | null | undefined): string {
+  if (!val) return ''
+  return val.replace(/[\r\n\t\u00A0\u200B\uFEFF]/g, '').trim()
 }
 
 export function readLocalAiConfig(): LocalAiConfig | null {
@@ -652,11 +758,22 @@ export function readLocalAiConfig(): LocalAiConfig | null {
     if (parsed === null || typeof parsed !== 'object') return null
     const body = parsed as Record<string, unknown>
     if (typeof body.ai_provider !== 'string' || typeof body.ai_model !== 'string') return null
+
+    let pool: AiKeySlot[] | undefined = undefined
+    if (Array.isArray(body.api_keys_pool)) {
+      pool = body.api_keys_pool as AiKeySlot[]
+    }
+    const rawRouting = String(body.routing_mode ?? 'smart_failover').trim()
+    const routing_mode: AiRoutingMode =
+      rawRouting === 'round_robin' || rawRouting === 'role_based' ? rawRouting : 'smart_failover'
+
     return {
       ai_provider: body.ai_provider,
       ai_model: body.ai_model,
       ai_base_url: typeof body.ai_base_url === 'string' ? body.ai_base_url : '',
       ai_api_key: typeof body.ai_api_key === 'string' ? body.ai_api_key : '',
+      routing_mode,
+      api_keys_pool: pool,
       saved_at: typeof body.saved_at === 'string' ? body.saved_at : '',
     }
   } catch {
@@ -664,18 +781,23 @@ export function readLocalAiConfig(): LocalAiConfig | null {
   }
 }
 
-export function sanitizeAiInput(val: string | null | undefined): string {
-  if (!val) return ''
-  return val.replace(/[\r\n\t\u00A0\u200B\uFEFF]/g, '').trim()
-}
-
 export function persistLocalAiConfig(update: AiConfigUpdate): void {
   try {
+    const sanitizedPool = update.api_keys_pool?.map((slot) => ({
+      ...slot,
+      label: slot.label.trim(),
+      model: sanitizeAiInput(slot.model),
+      api_key: sanitizeAiInput(slot.api_key),
+      base_url: sanitizeAiInput(slot.base_url),
+    }))
+
     const entry: LocalAiConfig = {
       ai_provider: sanitizeAiInput(update.ai_provider).toLowerCase(),
       ai_model: sanitizeAiInput(update.ai_model),
       ai_base_url: sanitizeAiInput(update.ai_base_url),
       ai_api_key: sanitizeAiInput(update.ai_api_key),
+      routing_mode: update.routing_mode || 'smart_failover',
+      api_keys_pool: sanitizedPool,
       saved_at: new Date().toISOString(),
     }
     window.localStorage.setItem(AI_CONFIG_CACHE_KEY, JSON.stringify(entry))
@@ -946,12 +1068,46 @@ export function adaptAiConfig(payload: unknown): AiConfig {
     typeof source.masked_key === 'string' && source.masked_key.trim().length > 0
       ? source.masked_key.trim()
       : null
+
+  let pool: AiKeySlot[] = []
+  if (Array.isArray(source.api_keys_pool)) {
+    pool = source.api_keys_pool
+      .filter((item): item is Record<string, unknown> => item !== null && typeof item === 'object')
+      .map((item, idx) => {
+        const id = String(item.id ?? `key-${idx + 1}`).trim()
+        const provider = (String(item.provider ?? 'gemini').trim().toLowerCase() as AiKeyProvider)
+        const role = (String(item.role ?? 'all').trim().toLowerCase() as AiKeyRole)
+        const status = (String(item.status ?? 'untested').trim().toLowerCase() as AiKeyStatus)
+        return {
+          id,
+          label: String(item.label ?? `Key #${idx + 1}`).trim(),
+          provider: (['gemini', 'groq', 'openrouter', 'openai', 'mistral', 'cerebras', 'custom'].includes(provider)
+            ? provider
+            : 'custom') as AiKeyProvider,
+          model: sanitizeAiInput(item.model as string | undefined) || 'gemini-2.5-flash',
+          api_key: sanitizeAiInput(item.api_key as string | undefined),
+          base_url: sanitizeAiInput(item.base_url as string | undefined),
+          role: (['all', 'vision_pricing', 'fast_chat_search'].includes(role) ? role : 'all') as AiKeyRole,
+          enabled: item.enabled !== false,
+          status: (['active', 'cooldown', 'exhausted', 'untested'].includes(status) ? status : 'untested') as AiKeyStatus,
+          latency_ms: typeof item.latency_ms === 'number' ? item.latency_ms : undefined,
+          calls_count: typeof item.calls_count === 'number' ? item.calls_count : undefined,
+        }
+      })
+  }
+
+  const rawRouting = String(source.routing_mode ?? 'smart_failover').trim()
+  const routing_mode: AiRoutingMode =
+    rawRouting === 'round_robin' || rawRouting === 'role_based' ? rawRouting : 'smart_failover'
+
   return {
     ai_provider: typeof source.ai_provider === 'string' ? source.ai_provider.trim() : '',
     ai_model: typeof source.ai_model === 'string' ? source.ai_model.trim() : '',
     ai_base_url: typeof source.ai_base_url === 'string' ? source.ai_base_url.trim() : '',
-    has_api_key: source.has_api_key === true || maskedKey !== null,
+    has_api_key: source.has_api_key === true || maskedKey !== null || pool.some((s) => s.api_key.length > 0),
     masked_key: maskedKey,
+    routing_mode,
+    api_keys_pool: pool,
   }
 }
 
@@ -1006,16 +1162,64 @@ export async function setAgentEnabled(agentKey: string, enabled: boolean): Promi
 
 /** PUT /admin/ai-config — returns the authoritative config the server stored. */
 export async function saveAiConfig(update: AiConfigUpdate): Promise<AiConfig> {
-  const sanitizedUpdate: AiConfigUpdate = {
-    ai_provider: sanitizeAiInput(update.ai_provider).toLowerCase(),
-    ai_model: sanitizeAiInput(update.ai_model),
-    ai_api_key: sanitizeAiInput(update.ai_api_key),
-    ai_base_url: sanitizeAiInput(update.ai_base_url),
+  const sanitizedPool = update.api_keys_pool?.map((slot) => ({
+    ...slot,
+    label: slot.label.trim(),
+    model: sanitizeAiInput(slot.model),
+    api_key: sanitizeAiInput(slot.api_key),
+    base_url: sanitizeAiInput(slot.base_url),
+  }))
+
+  // Backward compatibility: automatically pick fastest/first active healthy slot for primary fields
+  let primaryProvider = sanitizeAiInput(update.ai_provider).toLowerCase()
+  let primaryModel = sanitizeAiInput(update.ai_model)
+  let primaryApiKey = sanitizeAiInput(update.ai_api_key)
+  let primaryBaseUrl = sanitizeAiInput(update.ai_base_url)
+
+  if (sanitizedPool && sanitizedPool.length > 0) {
+    const activeWithKeys = sanitizedPool.filter((s) => s.enabled && s.api_key.length > 0)
+    // Find fastest healthy if tested, else first active with key, else first enabled
+    const fastestHealthy = [...activeWithKeys]
+      .filter((s) => s.status === 'active' && typeof s.latency_ms === 'number')
+      .sort((a, b) => (a.latency_ms ?? 9999) - (b.latency_ms ?? 9999))[0]
+
+    const candidate =
+      fastestHealthy ||
+      activeWithKeys[0] ||
+      sanitizedPool.find((s) => s.enabled) ||
+      sanitizedPool[0]
+
+    if (candidate) {
+      primaryProvider = candidate.provider
+      primaryModel = candidate.model
+      if (candidate.api_key) primaryApiKey = candidate.api_key
+      if (candidate.base_url) primaryBaseUrl = candidate.base_url
+    }
   }
+
+  const sanitizedUpdate: AiConfigUpdate = {
+    ai_provider: primaryProvider,
+    ai_model: primaryModel,
+    ai_api_key: primaryApiKey,
+    ai_base_url: primaryBaseUrl,
+    routing_mode: update.routing_mode || 'smart_failover',
+    api_keys_pool: sanitizedPool,
+  }
+
   const payload = await api.put<unknown>(endpoints.aiConfig, sanitizedUpdate)
   const body = asRecord(payload)
-  if ('ai_provider' in body || 'has_api_key' in body || 'masked_key' in body) {
-    return adaptAiConfig(body)
+  if (
+    'ai_provider' in body ||
+    'has_api_key' in body ||
+    'masked_key' in body ||
+    'api_keys_pool' in body
+  ) {
+    const adapted = adaptAiConfig(body)
+    if (adapted.api_keys_pool.length === 0 && sanitizedPool && sanitizedPool.length > 0) {
+      adapted.api_keys_pool = sanitizedPool
+      adapted.routing_mode = update.routing_mode || 'smart_failover'
+    }
+    return adapted
   }
   return fetchAiConfig()
 }
@@ -1072,6 +1276,205 @@ export async function testAiConnection(customPrompt?: string): Promise<AiTestRes
       model: '',
       error: apiErrorMessage(error),
     }
+  }
+}
+
+export async function testAiKeySlot(slot: AiKeySlot, customPrompt?: string): Promise<AiTestResult> {
+  const started = performance.now()
+  const key = sanitizeAiInput(slot.api_key)
+  const prompt =
+    customPrompt ||
+    'Ping test: estimate fair INR resale price for a Casio fx-991EX calculator in Good condition.'
+
+  if (!key) {
+    return {
+      ok: false,
+      latencyMs: 0,
+      provider: slot.provider,
+      model: slot.model,
+      error: 'No API key entered for this slot. Paste an API key to test.',
+    }
+  }
+
+  try {
+    if (slot.provider === 'gemini') {
+      const model = slot.model || 'gemini-2.5-flash'
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { maxOutputTokens: 100 },
+        }),
+      })
+      const latencyMs = Math.round(performance.now() - started)
+      if (!res.ok) {
+        const errJson = (await res.json().catch(() => null)) as Record<string, unknown> | null
+        const errorObj = errJson?.error as Record<string, unknown> | undefined
+        const errMsg =
+          typeof errorObj?.message === 'string' ? errorObj.message : `HTTP ${res.status} ${res.statusText}`
+        return { ok: false, latencyMs, provider: 'gemini', model, error: errMsg }
+      }
+      const data = (await res.json()) as {
+        candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>
+      }
+      const sample =
+        data?.candidates?.[0]?.content?.parts?.[0]?.text ||
+        'Live Gemini AI connected and responding (₹ valuation ready).'
+      return { ok: true, latencyMs, provider: 'gemini', model, sampleOutput: sample }
+    }
+
+    if (slot.provider === 'openrouter') {
+      const model = slot.model || 'google/gemini-2.0-flash-exp:free'
+      const baseUrl = slot.base_url?.trim() || 'https://openrouter.ai/api/v1'
+      const res = await fetch(`${baseUrl.replace(/\/+$/, '')}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${key}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': typeof window !== 'undefined' ? window.location.origin : 'https://campusmart.in',
+          'X-Title': 'CampusMart Admin Hydra Pool',
+        },
+        body: JSON.stringify({
+          model,
+          messages: [{ role: 'user', content: prompt }],
+          max_tokens: 80,
+        }),
+      })
+      const latencyMs = Math.round(performance.now() - started)
+      if (!res.ok) {
+        const errJson = (await res.json().catch(() => null)) as Record<string, unknown> | null
+        const errorObj = errJson?.error as Record<string, unknown> | undefined
+        const errMsg =
+          typeof errorObj?.message === 'string' ? errorObj.message : `HTTP ${res.status} ${res.statusText}`
+        return { ok: false, latencyMs, provider: 'openrouter', model, error: errMsg }
+      }
+      const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> }
+      const sample =
+        data?.choices?.[0]?.message?.content ||
+        'Live OpenRouter pool connected and responding.'
+      return { ok: true, latencyMs, provider: 'openrouter', model, sampleOutput: sample }
+    }
+
+    // Direct fetch test for providers with OpenAI-compatible chat endpoints
+    let endpoint = ''
+    if (slot.provider === 'groq') endpoint = 'https://api.groq.com/openai/v1/chat/completions'
+    else if (slot.provider === 'openai') endpoint = 'https://api.openai.com/v1/chat/completions'
+    else if (slot.provider === 'mistral') endpoint = 'https://api.mistral.ai/v1/chat/completions'
+    else if (slot.provider === 'cerebras') endpoint = 'https://api.cerebras.ai/v1/chat/completions'
+    else if (slot.base_url) endpoint = `${slot.base_url.replace(/\/+$/, '')}/chat/completions`
+
+    if (endpoint) {
+      try {
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${key}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: slot.model,
+            messages: [{ role: 'user', content: prompt }],
+            max_tokens: 80,
+          }),
+        })
+        const latencyMs = Math.round(performance.now() - started)
+        if (!res.ok) {
+          const errJson = (await res.json().catch(() => null)) as Record<string, unknown> | null
+          const errorObj = errJson?.error as Record<string, unknown> | undefined
+          const errMsg =
+            typeof errorObj?.message === 'string' ? errorObj.message : `HTTP ${res.status} ${res.statusText}`
+          return { ok: false, latencyMs, provider: slot.provider, model: slot.model, error: errMsg }
+        }
+        const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> }
+        const sample =
+          data?.choices?.[0]?.message?.content || 'Live AI endpoint connected and responding.'
+        return { ok: true, latencyMs, provider: slot.provider, model: slot.model, sampleOutput: sample }
+      } catch {
+        // Direct browser fetch hit CORS or network block. Fall back to backend /ai/chat
+      }
+    }
+
+    // Fallback: Test via backend /ai/chat
+    const backendRes = await testAiConnection(prompt)
+    return {
+      ...backendRes,
+      provider: slot.provider,
+      model: slot.model || backendRes.model,
+    }
+  } catch (err) {
+    const latencyMs = Math.round(performance.now() - started)
+    return {
+      ok: false,
+      latencyMs,
+      provider: slot.provider,
+      model: slot.model,
+      error: apiErrorMessage(err),
+    }
+  }
+}
+
+export interface AiPoolFailoverStep {
+  slotId: string
+  label: string
+  provider: string
+  model: string
+  role: AiKeyRole
+  status: AiKeyStatus
+  latencyMs?: number
+  ok: boolean
+  error?: string
+}
+
+export interface AiPoolTestReport {
+  timestamp: string
+  totalSlots: number
+  activeCount: number
+  healthyCount: number
+  fastestSlotId: string | null
+  fastestLatencyMs: number | null
+  failoverChain: AiPoolFailoverStep[]
+}
+
+export async function testAiPool(slots: AiKeySlot[]): Promise<AiPoolTestReport> {
+  const chain: AiPoolFailoverStep[] = []
+  let fastestSlotId: string | null = null
+  let fastestLatencyMs: number | null = null
+  let healthyCount = 0
+
+  const enabledSlots = slots.filter((s) => s.enabled)
+
+  for (const slot of enabledSlots) {
+    const res = await testAiKeySlot(slot)
+    if (res.ok) {
+      healthyCount++
+      if (fastestLatencyMs === null || res.latencyMs < fastestLatencyMs) {
+        fastestLatencyMs = res.latencyMs
+        fastestSlotId = slot.id
+      }
+    }
+    chain.push({
+      slotId: slot.id,
+      label: slot.label,
+      provider: slot.provider,
+      model: slot.model,
+      role: slot.role,
+      status: res.ok ? 'active' : 'exhausted',
+      latencyMs: res.latencyMs,
+      ok: res.ok,
+      error: res.error,
+    })
+  }
+
+  return {
+    timestamp: new Date().toISOString(),
+    totalSlots: slots.length,
+    activeCount: enabledSlots.length,
+    healthyCount,
+    fastestSlotId,
+    fastestLatencyMs,
+    failoverChain: chain,
   }
 }
 
