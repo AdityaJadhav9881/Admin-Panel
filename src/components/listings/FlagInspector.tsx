@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import type { AdminListingUpdatePayload } from '../../api/client'
 import type { Listing, User } from '../../data/mock'
 import {
   LISTING_DELETE_TRUST_PENALTY,
@@ -10,20 +11,24 @@ import {
   trustPercent,
 } from '../../data/mock'
 import { formatMoney, initials } from '../../lib/format'
-import { ArrowRightIcon, BanIcon, CheckIcon, CloseIcon, TrashIcon } from '../icons'
+import { ArrowRightIcon, BanIcon, CheckIcon, CloseIcon, EditIcon, TrashIcon } from '../icons'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
+import { ListingEditForm } from './ListingEditForm'
 import { ListingThumb } from './ListingThumb'
 
 interface FlagInspectorProps {
   listing: Listing | null
   seller: User | undefined
   fraudAgentEnabled: boolean
+  allUsers?: User[]
+  initialMode?: 'view' | 'edit'
   onClose: () => void
   onApprove: (listing: Listing) => void
   onDelete: (listing: Listing) => void
   onBanSeller: (listing: Listing) => void
   onOpenSeller: (sellerId: string) => void
+  onUpdateListing?: (listingId: string, payload: AdminListingUpdatePayload) => Promise<void> | void
 }
 
 function deviationTone(deviation: number): 'success' | 'warning' | 'critical' {
@@ -46,15 +51,25 @@ export function FlagInspector({
   listing,
   seller,
   fraudAgentEnabled,
+  allUsers = [],
+  initialMode = 'view',
   onClose,
   onApprove,
   onDelete,
   onBanSeller,
   onOpenSeller,
+  onUpdateListing,
 }: FlagInspectorProps) {
+  const [mode, setMode] = useState<'view' | 'edit'>(initialMode)
   const [activePhotoIndex, setActivePhotoIndex] = useState<number | null>(null)
   const [zoomLevel, setZoomLevel] = useState<number>(1)
   const lightboxOpen = useRef(false)
+
+  const [prevTrack, setPrevTrack] = useState({ id: listing?.id, initialMode })
+  if (listing?.id !== prevTrack.id || initialMode !== prevTrack.initialMode) {
+    setPrevTrack({ id: listing?.id, initialMode })
+    setMode(initialMode)
+  }
 
   useEffect(() => {
     if (!listing) return
@@ -106,7 +121,7 @@ export function FlagInspector({
         <header className="flex h-16 shrink-0 items-center justify-between gap-4 border-b border-line px-5">
           <div className="min-w-0">
             <h2 id="inspector-title" className="text-[15px] leading-tight font-semibold text-ink">
-              Listing inspector
+              {mode === 'edit' ? 'Edit Listing (God-Mode)' : 'Listing inspector'}
             </h2>
             <p className="font-mono text-[12px] text-ink-faint">{listing.id}</p>
           </div>
@@ -120,7 +135,50 @@ export function FlagInspector({
           </button>
         </header>
 
-        <div className="flex-1 space-y-5 overflow-y-auto p-5">
+        {/* Mode Selector Tab Bar */}
+        <div className="flex border-b border-line bg-surface-2 p-1.5 gap-1.5 shrink-0">
+          <button
+            type="button"
+            onClick={() => setMode('view')}
+            className={`flex-1 py-1.5 text-[12.5px] font-medium rounded-lg transition-colors ${
+              mode === 'view'
+                ? 'bg-surface text-ink shadow-xs border border-line'
+                : 'text-ink-muted hover:text-ink'
+            }`}
+          >
+            Details &amp; AI Inspection
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode('edit')}
+            className={`inline-flex items-center justify-center gap-1.5 flex-1 py-1.5 text-[12.5px] font-medium rounded-lg transition-colors ${
+              mode === 'edit'
+                ? 'bg-brand text-white shadow-xs'
+                : 'text-ink-muted hover:text-ink'
+            }`}
+          >
+            <EditIcon size={13} />
+            Edit Listing
+          </button>
+        </div>
+
+        {mode === 'edit' ? (
+          <ListingEditForm
+            key={listing.id}
+            listing={listing}
+            seller={seller}
+            allUsers={allUsers}
+            onSave={async (id, payload) => {
+              if (onUpdateListing) {
+                await onUpdateListing(id, payload)
+              }
+            }}
+            onCancel={() => setMode('view')}
+            onDelete={onDelete}
+          />
+        ) : (
+          <>
+            <div className="flex-1 space-y-5 overflow-y-auto p-5">
           {/* Identity */}
           <section className="flex items-start gap-4">
             <ListingThumb listing={listing} size="lg" />
@@ -385,6 +443,8 @@ export function FlagInspector({
               : `Deleting lowers the seller's trust score by ${LISTING_DELETE_TRUST_PENALTY} points.`}
           </p>
         </footer>
+        </>
+        )}
       </div>
 
       {/* Full-size interactive zoom photo viewer — sits above the drawer */}

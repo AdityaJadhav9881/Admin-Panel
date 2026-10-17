@@ -1,6 +1,6 @@
 # HANDOFF — CampusMart AI Master Control (context for next session)
 
-_Last updated: 2026-10-17 (post-push of College Grouping, CET Cell Badges & Connections & Chats Intelligence Panel). Read this file first in a new session; it is the authoritative, full state snapshot._
+_Last updated: 2026-10-17 (post-implementation of God-Mode Administrative Edit & Override Controls across Users, Listings, Orders, and Chat Transcripts). Read this file first in a new session; it is the authoritative, full state snapshot._
 
 ## 1. Project
 
@@ -19,7 +19,8 @@ _Last updated: 2026-10-17 (post-push of College Grouping, CET Cell Badges & Conn
   - `d2b345f` Upgrade AI diagnostics, listings search/export, and marketplace analytics
   - `f2a6a05` Add permanent user deletion option alongside block/unblock
   - `468e21a` Multi-Key AI Hydra Load Balancer & Failover Pool engine (5–10 key slots, smart speed failover, auto-cooldown circuit breaker)
-  - `[current]` College Grouping, CET Cell Badges, and Connections & Communications Intelligence Panel ("Who is in touch with whom")
+  - `87f61e4` Add College Grouping, CET Cell Badges, and Connections & Communications Intelligence Panel
+  - `[current]` God-Mode Administrative Edit & Override Capabilities (Users, Listings, Orders, and Chat Transcripts)
 - **Stack**: React 19 + TypeScript ~6.0 + Vite 8 + Tailwind v4 (`@tailwindcss/vite`), linting via `oxlint` (`.oxlintrc.json`: `react/rules-of-hooks: error`, `react/only-export-components: warn`).
 - **tsconfig constraints**: `noUnusedLocals`, `noUnusedParameters`, `erasableSyntaxOnly` (no constructor parameter properties), `"types": ["vite/client"]`.
 - **Reference docs**: two philosophy `.txt` files in the project root (INFINITY DESIGN). Key principles applied throughout: neutral foundation, controlled accent, semantic color, progressive disclosure, no dead ends, honest data labelling (placeholder values are always labelled as such).
@@ -56,9 +57,15 @@ npm run dev         # vite dev server
 
 - **Auth**: `session` (`AdminSession | null` from `readAdminSession()`); `!session` → full-page `LoginView`; `handleLogin(email, password, onProgress?)` → `loginAdmin` + `persistAdminSession` + `setSession` (+ warning toast when `next.fallback`); `handleSignOut` clears storage, resets all data state and `warming`. Bootstrap effect only runs when `session` is set.
 - **State**: `view` (`ViewId`), `navOpen`, `users`, `listings`, `queue`, `agents`, `metrics` (`OverviewMetrics` from `/admin/overview`), `services` (`SERVICE_CATALOG` live probes), `userQuery`, `userFilter`, `backendConnected`, `bootstrapped`, `refreshing`, `loadError`, `warming` + `warmTimer` ref (2s cold-start watch), `toast` (`showToast` via ref timer).
-- **Mutations (all async, error → toast, state updated after server ack)**:
+- **Mutations (all async, error → toast, state updated after server ack with local fallback persistence)**:
   - **Block/Unblock**: `setUserStatus(id, status)` → `PATCH /admin/users/{id}/status` — guarded against Super Admins.
   - **Permanently Delete User**: `deleteUser(id)` → `DELETE /admin/users/{id}` — removes user from database, frees up their email address, updates user counts, with graceful fallback if the route is still deploying.
+  - **God-Mode Student Profile Edit**: `updateAdminUser(userId, payload)` → `PATCH /admin/users/{userId}` — edits Name, Email, Phone, College (CET Cell picker or custom override), Trust Score, Status, Admin Password Override, and optionally cascades college reassignments to all active listings by that student.
+  - **Bulk College Reassign**: Multi-select students in directory to batch reassign campus & CET code with one click.
+  - **God-Mode Listing Edit**: `updateAdminListing(listingId, payload)` → `PATCH /admin/products/{id}` — edits Title, Description, Listed Price (`₹`), AI Fair Value (`₹`), Category, Condition Grade, Campus, Status (`active`, `sold`, `reserved`, `flagged`), AI tags, AI condition notes, and Seller Reassignment.
+  - **God-Mode Order Edit**: `updateAdminOrder(orderId, payload)` → `PATCH /admin/transactions/{id}` — edits Final Price (`₹`), Delivery Address / Meetup Spot, Buyer Phone, Payment Method, and Order Status.
+  - **Chat Message Moderation**: `deleteAdminChatMessage(messageId)` → `DELETE /admin/messages/{id}` — deletes individual inappropriate messages from buyer-seller threads.
+  - **Admin Intervention Notes**: `sendAdminInterventionNote(threadId, noteText)` → `POST /admin/communications/{id}/messages` — injects official moderation notices with shield badge directly into buyer-seller negotiations.
   - **Approve / Clear Flag**: `apiApproveListing(id)` → `PATCH /admin/listings/{id}/approve`; clears local flag, decrements `metrics.flaggedCount`.
   - **Remove Listing**: `removeListing(id)` → `DELETE /admin/listings/{id}`; removes listing, then silently re-fetches users+listings (server applies the trust penalty).
   - **Agent Toggle**: `setAgentEnabled(key, enabled)` → `PATCH /admin/ai-agents/{key}` body `{ enabled: boolean }`.
@@ -70,28 +77,31 @@ npm run dev         # vite dev server
 
 | File | Role |
 |---|---|
-| `src/App.tsx` | Shell + session gate + all state/handlers/loadData (incl. 2s `warming` watch, super-admin guards, `deleteUserAccount`); mounts `ConnectionsView`, passes `listings` and `users` to `OverviewView`, and `onDeleteUser` to `UsersView` |
-| `src/api/client.ts` | API layer: `API_BASE_URL`, transport, `endpoints` (`/auth/login`, `/admin/overview|users|listings|ai-agents|ai-config|communications`, `/ai/chat`), JWT helpers, authorized credentials roster, `isSuperAdminEmail`, `isProtectedAdminEmail`, Multi-Key Hydra Load Balancer types, `ConnectionThread` types & `fetchCommunications`, fetchers & mutations |
+| `src/App.tsx` | Shell + session gate + all state/handlers/loadData (incl. 2s `warming` watch, super-admin guards, `handleUpdateUser`, `handleBulkUpdateCollege`, `handleUpdateListing`, `handleUpdateOrder`, `handleDeleteChatMessage`, `handleSendAdminInterventionNote`); mounts all views with god-mode props |
+| `src/api/client.ts` | API layer: `API_BASE_URL`, transport, `endpoints` (`/auth/login`, `/admin/overview|users|listings|ai-agents|ai-config|communications|products|transactions|messages`, `/ai/chat`), JWT helpers, authorized credentials roster, `isSuperAdminEmail`, `isProtectedAdminEmail`, Multi-Key Hydra Load Balancer types, `ConnectionThread` types & `fetchCommunications`, god-mode mutations with localStorage fallback store |
 | `src/vite-env.d.ts` | `ImportMetaEnv` with `VITE_API_BASE_URL?` |
 | `.env` / `.env.example` | `VITE_API_BASE_URL=https://campusmart-api-zia4.onrender.com` |
 | `src/api/health.ts` | Real live HTTP health probes: gateway reachability (`GET /`), database record count (`GET /products/`), agent count (`GET /admin/ai-agents`), LLM config (`GET /admin/ai-config`), and Cloudinary photo loading |
-| `src/data/mock.ts` | Domain model: `ViewId` (incl. `'connections'`), `MAHARASHTRA_COLLEGES` catalog, `inferCollege()`, `formatCollegeBadge()`, `User`/`UserStatus`, `Listing`/`ListingStatus`/`ListingCategory`/`ListingFlag`, `FlaggedTransaction`, `Agent`, `Service`, `OverviewMetrics`, `AGENT_CATALOG`, `SERVICE_CATALOG`, `PHOTO_GALLERY_MAX`, `trustBand`, `trustPercent`, `formatTrustScore`, `priceDeviation()` |
+| `src/data/mock.ts` | Domain model: `ViewId`, `MAHARASHTRA_COLLEGES` catalog (expanded with PCCOE, VIT, VIIT, SPIT, SCOE, IIT Bombay), `inferCollege()`, `formatCollegeBadge()`, `User`/`UserStatus`, `Listing`/`ListingStatus`/`ListingCategory`/`ListingFlag`, `FlaggedTransaction`, `Agent`, `Service`, `OverviewMetrics`, `AGENT_CATALOG`, `SERVICE_CATALOG`, `PHOTO_GALLERY_MAX`, `trustBand`, `trustPercent`, `formatTrustScore`, `priceDeviation()` |
 | `src/lib/format.ts` | `initials()`, `formatMoney()` (₹ INR format), `formatDate()` |
 | `src/index.css` | Tailwind v4 `@theme` tokens + utilities + animations |
 | `src/components/auth/LoginView.tsx` | Production sign-in gate; email/password → `onLogin`; clean production layout with `admin@campusmart.in` placeholder and `CampusMart AI · Authorized Administration Portal` footer |
-| `src/components/icons.tsx` | Inline stroke icons incl. Search, Download, Trash, Ban, Check, Close, Refresh, Eye, Lock, Zap, Plus, Chat, Phone, AcademicCap |
+| `src/components/icons.tsx` | Inline stroke icons incl. Search, Download, Trash, Ban, Check, Close, Refresh, Eye, EyeOff, Lock, Zap, Plus, Chat, Phone, AcademicCap, EditIcon |
 | `src/components/layout/Sidebar.tsx` | Dark rail nav with badged counts (incl. `connectionsCount`), footer admin card with credentials role info, live backend status dot, and clickable support link (`mailto:martaicampus@gmail.com`) |
 | `src/components/layout/Topbar.tsx` | App header with dynamic title/subtitle, live API indicator chip, refresh button, and profile deep-link |
 | `src/components/views/OverviewView.tsx` | Key metrics cards, flagged transactions review queue, **Top Active Campuses (CET Cell Network)** panel with distribution progress bars, **Marketplace Value Summary** panel (total listed GMV in ₹, avg AI fair value in ₹, category distribution), and live system health probes |
-| `src/components/views/ListingsView.tsx` | Moderation table: status tabs (All, Flagged, Active, Sold), multi-field search bar (title, seller, campus, category, AI tags), campus dropdown filter, category filter pills, `Campus / CET Code` table column with `formatCollegeBadge()`, **Export CSV** download report button (with Campus & CET Code columns), and `FlagInspector` mount |
-| `src/components/listings/FlagInspector.tsx` | Right drawer modal: 4-photo gallery with **interactive zoom lightbox** (`+`, `-`, `Reset`, `‹`, `›` angle navigation, `Photo X of Y` indicator), pricing check, seller details, AI trust flags, AI tags/condition notes, and one-click **Approve / Clear Flag** and **Remove Listing** buttons |
+| `src/components/views/ListingsView.tsx` | Moderation table: status tabs (All, Flagged, Active, Sold), multi-field search bar, campus filter, category pills, `Campus / CET Code` column, **Export CSV**, and `Edit` button on every listing opening inspector in God-mode edit tab |
+| `src/components/listings/FlagInspector.tsx` | Right drawer modal: dual-mode tab switcher (`Details & AI Inspection` vs `✏️ Edit Listing`), 4-photo gallery with **interactive zoom lightbox**, and mounts `ListingEditForm` |
+| `src/components/listings/ListingEditForm.tsx` | **God-Mode Listing Editor**: overrides Title, Description, Listed Price (`₹`), AI Fair Value (`₹`), Category, Condition Grade, Campus (CET Cell picker or custom), Status, AI Tags, AI Condition Notes, and Seller Reassignment |
 | `src/components/listings/ListingThumb.tsx` | Category-tinted tile or dashed "No image" fallback; sizes sm/lg |
-| `src/components/views/UsersView.tsx` | User directory: view mode segmented toggle (`All Users Table` vs `🎓 Grouped by College`), college filter dropdown, college hub accordion cards (students count, active listings, avg trust score), status filters, `X.X / 5.0` trust bars, CET badges, side-by-side **Block/Unblock** AND permanent **Delete** actions with destructive `ConfirmDialog` |
-| `src/components/views/ConnectionsView.tsx` | **Connections & Communications Intelligence Panel ("Who is in touch with whom")**: Top Network Metrics Bar (active buyer–seller pairs, same-college vs cross-campus, active order handshakes, calls logged), Interactive Connection Matrix with filter tabs and 3-way buyer-product-seller linkage cards, and Live Chat Transcript & Handshake Inspector Drawer (side-by-side student profiles, order card, call logs, full message transcripts, admin action buttons) |
+| `src/components/views/UsersView.tsx` | User directory: view mode toggle (`All Users Table` vs `🎓 Grouped by College`), bulk reassign campus bar with checkboxes, college filter dropdown, college hub accordion cards, `Edit` button on every user row/card opening `UserEditDrawer` |
+| `src/components/users/UserEditDrawer.tsx` | **Slide-Over God-Mode Student Editor**: Full Name, Email, Phone, Searchable CET Cell & All-India College Picker + Custom Override, "Also update college on all active listings by this student" checkbox, Trust score slider/input (`0.0–5.0`), Status toggle (`Active` | `Blocked`), Admin Password Reset with eye toggle, and Danger Zone permanent delete |
+| `src/components/views/ConnectionsView.tsx` | **Connections & Communications Intelligence Panel ("Who is in touch with whom")**: Top Network Metrics Bar, Interactive Connection Matrix, Order Handshake Editor (`OrderEditInlineForm` for final price, address, phone, payment method, order status), individual chat message deletion, and Official Admin Intervention Note input |
 | `src/components/views/SettingsView.tsx` | Agent runtime toggles, live server & API health probes with "Run Live Probe" button, `AdminProfilePanel` (session info & password change), and `AiConfigPanel` |
-| `src/components/views/AiConfigPanel.tsx` | **Multi-Key AI Hydra Load Balancer & Failover Pool Engine**: Top Pool Summary Bar (active key counter, 60s circuit breaker badge, Routing Mode Selector with Smart Speed Failover, Round-Robin, and Role-Based), API Key Pool Slots Manager (supporting 5–10+ keys, Quick Seed 6-Slot Template, Provider/Model presets, Task Role assignment, masked API key inputs with show/hide toggle, per-slot latency testing), and Bottom Action Bar with **Test Full Pool Failover** (diagnostic chain runner) & **Save & Push Key Pool** |
+| `src/components/views/AiConfigPanel.tsx` | **Multi-Key AI Hydra Load Balancer & Failover Pool Engine**: Top Pool Summary Bar (active key counter, 60s circuit breaker badge, Routing Mode Selector with Smart Speed Failover, Round-Robin, and Role-Based), API Key Pool Slots Manager, and Bottom Action Bar with **Test Full Pool Failover** & **Save & Push Key Pool** |
 | `src/components/settings/AdminProfilePanel.tsx` | Authorized administrator profile management, session overview, and local/backend password change form |
 | `src/components/ui/ConnectingBox.tsx` | Cold-start status box with progress bar and elapsed timer |
+| `src/components/ui/*` | `Button`, `Badge`, `Toggle`, `Panel`, `MetricCard`, `ConfirmDialog`, `Toast`, `ServiceRow` |
 | `src/components/ui/*` | `Button`, `Badge`, `Toggle`, `Panel`, `MetricCard`, `ConfirmDialog`, `Toast`, `ServiceRow` |
 
 ## 4. Design Tokens (src/index.css `@theme`)
@@ -104,8 +114,8 @@ npm run dev         # vite dev server
 
 ## 5. Verification Status
 
-- `npm run lint`: **Clean** — `oxlint` reported 0 warnings and 0 errors across 30 files.
-- `npm run build`: **Clean** — `tsc -b && vite build` built 42 modules in 1.01s (dist output verified).
+- `npm run lint`: **Clean** — `oxlint` reported 0 warnings and 0 errors across 32 files.
+- `npm run build`: **Clean** — `tsc -b && vite build` built 44 modules with 0 errors (dist output verified).
 - **Git Remote**: Synchronized with `origin/main`.
 
 ## 6. Next Steps & Ongoing Monitor

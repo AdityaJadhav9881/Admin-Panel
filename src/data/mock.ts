@@ -76,6 +76,42 @@ export const MAHARASHTRA_COLLEGES: CollegeInfo[] = [
     code: '6267',
     city: 'Kolhapur',
   },
+  {
+    name: 'Pimpri Chinchwad College of Engineering, Pune',
+    shortName: 'PCCOE Pune',
+    code: '6175',
+    city: 'Pune',
+  },
+  {
+    name: 'Vishwakarma Institute of Technology, Pune',
+    shortName: 'VIT Pune',
+    code: '6273',
+    city: 'Pune',
+  },
+  {
+    name: 'Vishwakarma Institute of Information Technology, Pune',
+    shortName: 'VIIT Pune',
+    code: '6284',
+    city: 'Pune',
+  },
+  {
+    name: 'Sardar Patel Institute of Technology, Mumbai',
+    shortName: 'SPIT Mumbai',
+    code: '3215',
+    city: 'Mumbai',
+  },
+  {
+    name: 'Sinhgad College of Engineering, Pune',
+    shortName: 'SCOE Pune',
+    code: '6178',
+    city: 'Pune',
+  },
+  {
+    name: 'Indian Institute of Technology, Bombay',
+    shortName: 'IIT Bombay',
+    code: 'IITB',
+    city: 'Mumbai',
+  },
 ]
 
 export function inferCollege(idOrEmailOrSeed: string): CollegeInfo {
@@ -97,12 +133,14 @@ export interface User {
   id: string
   name: string
   email: string
+  phone?: string
   trustScore: number
   status: UserStatus
   joined: string
   listings: number
   collegeName?: string
   collegeCode?: string
+  role?: string
 }
 
 export interface FlaggedTransaction {
@@ -260,7 +298,7 @@ export function issueServiceCount(services: Service[]): number {
    LISTINGS & MODERATION
    ============================================================ */
 
-export type ListingStatus = 'active' | 'sold' | 'flagged'
+export type ListingStatus = 'active' | 'sold' | 'flagged' | 'reserved'
 export type ListingCategory =
   | 'textbooks'
   | 'electronics'
@@ -278,6 +316,8 @@ export interface ListingFlag {
 export interface Listing {
   id: string
   title: string
+  description?: string
+  condition?: string
   /** References a user in the directory — seller data is never duplicated. */
   sellerId: string
   category: ListingCategory

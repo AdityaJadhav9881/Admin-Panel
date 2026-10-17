@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import type { AdminListingUpdatePayload } from '../../api/client'
 import type { Listing, ListingCategory, User } from '../../data/mock'
 import {
   LISTING_DELETE_TRUST_PENALTY,
@@ -10,7 +11,7 @@ import {
 import { formatMoney, initials } from '../../lib/format'
 import { FlagInspector } from '../listings/FlagInspector'
 import { ListingThumb } from '../listings/ListingThumb'
-import { DownloadIcon, SearchIcon } from '../icons'
+import { DownloadIcon, EditIcon, SearchIcon } from '../icons'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
@@ -26,6 +27,7 @@ interface ListingsViewProps {
   onDelete: (listing: Listing) => void
   onBanSeller: (listing: Listing) => void
   onOpenSeller: (sellerId: string) => void
+  onUpdateListing?: (listingId: string, payload: AdminListingUpdatePayload) => Promise<void> | void
 }
 
 const TABS: { id: ListingFilter; label: string }[] = [
@@ -60,12 +62,14 @@ export function ListingsView({
   onDelete,
   onBanSeller,
   onOpenSeller,
+  onUpdateListing,
 }: ListingsViewProps) {
   const [filter, setFilter] = useState<ListingFilter>('all')
   const [categoryFilter, setCategoryFilter] = useState<ListingCategory | 'all'>('all')
   const [collegeFilter, setCollegeFilter] = useState<string>('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [inspectorMode, setInspectorMode] = useState<'view' | 'edit'>('view')
   const [confirm, setConfirm] = useState<{ kind: 'delete' | 'ban'; listing: Listing } | null>(null)
 
   const collegeOptions = useMemo(() => {
@@ -400,12 +404,28 @@ export function ListingsView({
                         </p>
                       </div>
                     </div>
-                    <Button
-                      className="mt-3.5 w-full justify-center"
-                      onClick={() => setSelectedId(listing.id)}
-                    >
-                      Inspect listing
-                    </Button>
+                    <div className="mt-3.5 flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        className="flex-1 justify-center h-8.5 text-[12.5px]"
+                        onClick={() => {
+                          setSelectedId(listing.id)
+                          setInspectorMode('edit')
+                        }}
+                      >
+                        <EditIcon size={13} />
+                        Edit
+                      </Button>
+                      <Button
+                        className="flex-1 justify-center h-8.5 text-[12.5px]"
+                        onClick={() => {
+                          setSelectedId(listing.id)
+                          setInspectorMode('view')
+                        }}
+                      >
+                        Inspect
+                      </Button>
+                    </div>
                   </li>
                 )
               })}
@@ -516,11 +536,26 @@ export function ListingsView({
                           )}
                         </td>
                         <td className="px-5 py-3.5">
-                          <div className="flex justify-end">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <Button
+                              variant="outline"
+                              className="h-8 px-2.5 text-[12.5px]"
+                              aria-label={`Edit ${listing.title}`}
+                              onClick={() => {
+                                setSelectedId(listing.id)
+                                setInspectorMode('edit')
+                              }}
+                            >
+                              <EditIcon size={14} />
+                              Edit
+                            </Button>
                             <Button
                               className="h-8 px-3 text-[12.5px]"
                               aria-label={`Inspect ${listing.title}`}
-                              onClick={() => setSelectedId(listing.id)}
+                              onClick={() => {
+                                setSelectedId(listing.id)
+                                setInspectorMode('view')
+                              }}
                             >
                               Inspect
                             </Button>
@@ -547,6 +582,8 @@ export function ListingsView({
         listing={selected}
         seller={selectedSeller}
         fraudAgentEnabled={fraudAgentEnabled}
+        allUsers={users}
+        initialMode={inspectorMode}
         onClose={() => setSelectedId(null)}
         onApprove={(listing) => {
           onApprove(listing)
@@ -555,6 +592,7 @@ export function ListingsView({
         onDelete={(listing) => setConfirm({ kind: 'delete', listing })}
         onBanSeller={(listing) => setConfirm({ kind: 'ban', listing })}
         onOpenSeller={onOpenSeller}
+        onUpdateListing={onUpdateListing}
       />
 
       {confirm?.kind === 'delete' &&

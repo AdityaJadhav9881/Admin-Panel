@@ -19,7 +19,15 @@ import {
   deleteUser,
   setUserStatus,
   setAgentEnabled,
+  updateAdminUser,
+  updateAdminListing,
+  updateAdminOrder,
+  deleteAdminChatMessage,
+  sendAdminInterventionNote,
+  type AdminListingUpdatePayload,
+  type AdminOrderUpdatePayload,
   type AdminSession,
+  type AdminUserUpdatePayload,
   type ConnectionThread,
   type LoginProgress,
 } from './api/client'
@@ -44,6 +52,8 @@ import {
   type Agent,
   type FlaggedTransaction,
   type Listing,
+  type ListingCategory,
+  type ListingStatus,
   type OverviewMetrics,
   type Service,
   type User,
@@ -400,6 +410,73 @@ export default function App() {
     })
   }
 
+  const handleUpdateUser = (
+    userId: string,
+    payload: AdminUserUpdatePayload,
+    updateListingsCollege?: boolean,
+  ) => {
+    void withMutation(async () => {
+      await updateAdminUser(userId, payload)
+
+      // Optimistically update local users
+      setUsers((prev) =>
+        prev.map((u) => {
+          if (u.id !== userId) return u
+          return {
+            ...u,
+            name: payload.name ?? u.name,
+            email: payload.email ?? u.email,
+            phone: payload.phone ?? u.phone,
+            collegeName: payload.college_name ?? u.collegeName,
+            collegeCode: payload.college_code ?? u.collegeCode,
+            trustScore: payload.trust_score ?? u.trustScore,
+            status: (payload.status as UserStatus) ?? u.status,
+            role: payload.role ?? u.role,
+          }
+        }),
+      )
+
+      // Cascade college changes to listings if requested
+      if (updateListingsCollege && payload.college_name) {
+        setListings((prev) =>
+          prev.map((l) => {
+            if (l.sellerId !== userId) return l
+            return {
+              ...l,
+              collegeName: payload.college_name,
+              collegeCode: payload.college_code ?? l.collegeCode,
+            }
+          }),
+        )
+      }
+
+      showToast('Student profile updated successfully.', 'success')
+    })
+  }
+
+  const handleBulkUpdateCollege = (
+    userIds: string[],
+    collegeName: string,
+    collegeCode: string,
+  ) => {
+    void withMutation(async () => {
+      const idSet = new Set(userIds)
+      for (const uid of userIds) {
+        await updateAdminUser(uid, { college_name: collegeName, college_code: collegeCode })
+      }
+
+      setUsers((prev) =>
+        prev.map((u) => (idSet.has(u.id) ? { ...u, collegeName, collegeCode } : u)),
+      )
+
+      setListings((prev) =>
+        prev.map((l) => (idSet.has(l.sellerId) ? { ...l, collegeName, collegeCode } : l)),
+      )
+
+      showToast(`Reassigned ${userIds.length} students to ${collegeName}.`, 'success')
+    })
+  }
+
   /* --- Moderation actions ------------------------------------ */
   const approveListing = (listing: Listing) => {
     void withMutation(async () => {
@@ -475,6 +552,36 @@ export default function App() {
     navigate('users')
   }
 
+  const handleUpdateListing = (listingId: string, payload: AdminListingUpdatePayload) => {
+    void withMutation(async () => {
+      await updateAdminListing(listingId, payload)
+
+      setListings((prev) =>
+        prev.map((l) => {
+          if (l.id !== listingId) return l
+          return {
+            ...l,
+            title: payload.title ?? l.title,
+            description: payload.description ?? l.description,
+            category: (payload.category as ListingCategory) ?? l.category,
+            condition: payload.condition ?? l.condition,
+            price: payload.listed_price ?? l.price,
+            aiPrice: payload.suggested_price ?? l.aiPrice,
+            collegeName: payload.college_name ?? l.collegeName,
+            collegeCode: payload.college_code ?? l.collegeCode,
+            status: (payload.status as ListingStatus) ?? l.status,
+            aiTags: Array.isArray(payload.ai_tags) ? payload.ai_tags.join(', ') : (payload.ai_tags ?? l.aiTags),
+            aiConditionNotes: payload.ai_condition_notes ?? l.aiConditionNotes,
+            sellerId: payload.seller_id ?? l.sellerId,
+            flag: payload.status === 'flagged' ? l.flag : null,
+          }
+        }),
+      )
+
+      showToast('Listing updated successfully.', 'success')
+    })
+  }
+
   /* --- Agent actions (PATCH /admin/ai-agents/{key}) ---------- */
   const toggleAgent = (id: string) => {
     const agent = agents.find((item) => item.id === id)
@@ -496,6 +603,69 @@ export default function App() {
     setQueue((prev) => prev.map((tx) => (tx.id === id ? { ...tx, acknowledged: true } : tx)))
     setMetrics((prev) => ({ ...prev, flaggedCount: Math.max(0, prev.flaggedCount - 1) }))
     showToast(`${id} acknowledged.`, 'success')
+  }
+
+  /* --- Connection, Chat & Order God-Mode Actions ----------- */
+  const handleUpdateOrder = (orderId: string, payload: AdminOrderUpdatePayload) => {
+    void withMutation(async () => {
+      await updateAdminOrder(orderId, payload)
+
+      setConnections((prev) =>
+        prev.map((t) => {
+          if (t.id === orderId || t.order?.id === orderId || t.product?.id === orderId) {
+            return {
+              ...t,
+              payment_method: payload.payment_method ?? t.payment_method,
+              order: {
+                ...(t.order ?? {
+                  id: orderId,
+                  delivery_address: payload.delivery_address,
+                  contact_phone: payload.contact_phone,
+                  payment_method: payload.payment_method,
+                  order_status: payload.order_status,
+                  final_price: payload.final_price,
+                }),
+                ...payload,
+              },
+            }
+          }
+          return t
+        }),
+      )
+    })
+  }
+
+  const handleDeleteChatMessage = (messageId: string) => {
+    void withMutation(async () => {
+      await deleteAdminChatMessage(messageId)
+
+      setConnections((prev) =>
+        prev.map((t) => ({
+          ...t,
+          messages: t.messages.filter((m) => m.id !== messageId),
+          message_count: Math.max(0, t.messages.filter((m) => m.id !== messageId).length),
+        })),
+      )
+    })
+  }
+
+  const handleSendAdminInterventionNote = (threadId: string, noteText: string) => {
+    void withMutation(async () => {
+      const newMsg = await sendAdminInterventionNote(threadId, noteText)
+
+      setConnections((prev) =>
+        prev.map((t) => {
+          if (t.id !== threadId) return t
+          return {
+            ...t,
+            messages: [...t.messages, newMsg],
+            message_count: t.messages.length + 1,
+            last_message: noteText,
+            last_updated: 'Just now',
+          }
+        }),
+      )
+    })
   }
 
   /* --- Derived state ---------------------------------------- */
@@ -637,6 +807,7 @@ export default function App() {
                   onDelete={deleteListing}
                   onBanSeller={banSeller}
                   onOpenSeller={openSellerInUsers}
+                  onUpdateListing={handleUpdateListing}
                 />
               )}
 
@@ -650,6 +821,8 @@ export default function App() {
                   onFilterChange={setUserFilter}
                   onToggleStatus={toggleUserStatus}
                   onDeleteUser={deleteUserAccount}
+                  onUpdateUser={handleUpdateUser}
+                  onBulkUpdateCollege={handleBulkUpdateCollege}
                 />
               )}
 
@@ -658,6 +831,9 @@ export default function App() {
                   key="connections"
                   connections={connections}
                   onToast={showToast}
+                  onUpdateOrder={handleUpdateOrder}
+                  onDeleteChatMessage={handleDeleteChatMessage}
+                  onSendInterventionNote={handleSendAdminInterventionNote}
                 />
               )}
 

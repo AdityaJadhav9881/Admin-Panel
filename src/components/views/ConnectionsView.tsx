@@ -1,14 +1,16 @@
 import { useMemo, useState } from 'react'
-import type { ConnectionThread } from '../../api/client'
+import type { AdminOrderUpdatePayload, ConnectionThread } from '../../api/client'
 import { formatCollegeBadge, formatTrustScore } from '../../data/mock'
 import { formatMoney, initials } from '../../lib/format'
 import {
   AlertIcon,
   CheckIcon,
   CloseIcon,
+  EditIcon,
   PhoneIcon,
   SearchIcon,
   ShieldIcon,
+  TrashIcon,
 } from '../icons'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
@@ -19,6 +21,9 @@ import type { ToastMessage } from '../ui/Toast'
 interface ConnectionsViewProps {
   connections: ConnectionThread[]
   onToast: (text: string, tone: ToastMessage['tone']) => void
+  onUpdateOrder?: (orderId: string, payload: AdminOrderUpdatePayload) => Promise<void> | void
+  onDeleteChatMessage?: (messageId: string) => Promise<void> | void
+  onSendInterventionNote?: (threadId: string, note: string) => Promise<void> | void
 }
 
 type ConnectionTab = 'all' | 'orders' | 'calls' | 'same_college' | 'cross_campus'
@@ -31,12 +36,145 @@ const TABS: Array<{ id: ConnectionTab; label: string }> = [
   { id: 'cross_campus', label: 'Cross-Campus (🌐)' },
 ]
 
-export function ConnectionsView({ connections, onToast }: ConnectionsViewProps) {
+interface OrderEditInlineFormProps {
+  thread: ConnectionThread
+  onSave: (orderId: string, payload: AdminOrderUpdatePayload) => Promise<void> | void
+  onCancel: () => void
+  onToast: (text: string, tone: ToastMessage['tone']) => void
+}
+
+function OrderEditInlineForm({ thread, onSave, onCancel, onToast }: OrderEditInlineFormProps) {
+  const currentOrder = thread.order
+  const [finalPrice, setFinalPrice] = useState(String(currentOrder?.final_price ?? thread.product.price))
+  const [deliveryAddress, setDeliveryAddress] = useState(currentOrder?.delivery_address ?? 'Campus Central Library Lawn')
+  const [contactPhone, setContactPhone] = useState(currentOrder?.contact_phone ?? '+91 98221 04928')
+  const [paymentMethod, setPaymentMethod] = useState<'cash_on_meetup' | 'gpay_upi'>(
+    (currentOrder?.payment_method as 'cash_on_meetup' | 'gpay_upi') ?? (thread.payment_method ?? 'cash_on_meetup'),
+  )
+  const [orderStatus, setOrderStatus] = useState(currentOrder?.order_status ?? 'Confirmed')
+  const [saving, setSaving] = useState(false)
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setSaving(true)
+    const parsedPrice = Number(finalPrice)
+    const payload: AdminOrderUpdatePayload = {
+      final_price: isNaN(parsedPrice) ? thread.product.price : parsedPrice,
+      delivery_address: deliveryAddress.trim(),
+      contact_phone: contactPhone.trim(),
+      payment_method: paymentMethod,
+      order_status: orderStatus,
+    }
+
+    try {
+      await onSave(currentOrder?.id ?? thread.id, payload)
+      onToast('Order details updated successfully.', 'success')
+      onCancel()
+    } catch {
+      onToast('Failed to update order.', 'critical')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <form onSubmit={handleSave} className="mt-3 space-y-3 rounded-xl border border-brand/30 bg-surface-2/60 p-3.5">
+      <div className="flex items-center justify-between">
+        <span className="text-[12px] font-semibold text-brand-strong">Edit Order Handshake Details</span>
+        <button type="button" onClick={onCancel} className="text-[11.5px] text-ink-muted hover:text-ink cursor-pointer">
+          Cancel
+        </button>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2.5">
+        <div>
+          <label className="block text-[11px] text-ink-muted">Final Price (₹)</label>
+          <input
+            type="number"
+            min="0"
+            required
+            value={finalPrice}
+            onChange={(e) => setFinalPrice(e.target.value)}
+            className="mt-0.5 h-8 w-full rounded-md border border-line bg-surface px-2.5 text-[12.5px] text-ink font-semibold"
+          />
+        </div>
+        <div>
+          <label className="block text-[11px] text-ink-muted">Order Status</label>
+          <select
+            value={orderStatus}
+            onChange={(e) => setOrderStatus(e.target.value)}
+            className="mt-0.5 h-8 w-full rounded-md border border-line bg-surface px-2 text-[12px] text-ink"
+          >
+            <option value="Confirmed">Confirmed</option>
+            <option value="Pending Meetup">Pending Meetup</option>
+            <option value="Completed / Handover Done">Completed / Handover Done</option>
+            <option value="Cancelled">Cancelled</option>
+          </select>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2.5">
+        <div>
+          <label className="block text-[11px] text-ink-muted">Delivery / Meetup Spot</label>
+          <input
+            type="text"
+            required
+            value={deliveryAddress}
+            onChange={(e) => setDeliveryAddress(e.target.value)}
+            className="mt-0.5 h-8 w-full rounded-md border border-line bg-surface px-2.5 text-[12px] text-ink"
+          />
+        </div>
+        <div>
+          <label className="block text-[11px] text-ink-muted">Buyer Phone</label>
+          <input
+            type="text"
+            required
+            value={contactPhone}
+            onChange={(e) => setContactPhone(e.target.value)}
+            className="mt-0.5 h-8 w-full rounded-md border border-line bg-surface px-2.5 text-[12px] text-ink font-mono"
+          />
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-[11px] text-ink-muted">Payment Method</label>
+        <select
+          value={paymentMethod}
+          onChange={(e) => setPaymentMethod(e.target.value as 'cash_on_meetup' | 'gpay_upi')}
+          className="mt-0.5 h-8 w-full rounded-md border border-line bg-surface px-2 text-[12px] text-ink"
+        >
+          <option value="cash_on_meetup">Cash on Meetup</option>
+          <option value="gpay_upi">GPay / UPI Handshake</option>
+        </select>
+      </div>
+
+      <div className="flex justify-end gap-2 pt-1">
+        <Button type="button" variant="outline" className="h-7.5 px-3 text-[11.5px]" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button type="submit" variant="primary" className="h-7.5 px-3 text-[11.5px]" disabled={saving}>
+          {saving ? 'Saving…' : 'Save Order'}
+        </Button>
+      </div>
+    </form>
+  )
+}
+
+export function ConnectionsView({
+  connections,
+  onToast,
+  onUpdateOrder,
+  onDeleteChatMessage,
+  onSendInterventionNote,
+}: ConnectionsViewProps) {
   const [activeTab, setActiveTab] = useState<ConnectionTab>('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [collegeFilter, setCollegeFilter] = useState<string>('all')
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null)
   const [flaggedThreads, setFlaggedThreads] = useState<Record<string, boolean>>({})
+  const [isEditingOrder, setIsEditingOrder] = useState(false)
+  const [adminNoteText, setAdminNoteText] = useState('')
+  const [sendingNote, setSendingNote] = useState(false)
 
   // Network Metrics
   const totalPairs = connections.length
@@ -115,6 +253,22 @@ export function ConnectionsView({ connections, onToast }: ConnectionsViewProps) 
       onToast(`Conversation ${threadId} flagged for compliance review.`, 'warning')
     } else {
       onToast(`Flag removed from conversation ${threadId}.`, 'success')
+    }
+  }
+
+  const handleSendIntervention = async () => {
+    if (!adminNoteText.trim() || !selectedThread) return
+    setSendingNote(true)
+    try {
+      if (onSendInterventionNote) {
+        await onSendInterventionNote(selectedThread.id, adminNoteText.trim())
+      }
+      setAdminNoteText('')
+      onToast('Official Admin note posted to this conversation.', 'success')
+    } catch {
+      onToast('Failed to send admin note.', 'critical')
+    } finally {
+      setSendingNote(false)
     }
   }
 
@@ -503,16 +657,35 @@ export function ConnectionsView({ connections, onToast }: ConnectionsViewProps) 
                   </div>
                   {selectedThread.has_order && (
                     <div className="text-right shrink-0">
-                      <span className="inline-flex items-center gap-1 rounded-md bg-success-soft px-2.5 py-1 text-[11.5px] font-bold text-success border border-success/30">
-                        <CheckIcon size={14} />
-                        Order Confirmed
-                      </span>
+                      <div className="flex items-center gap-1.5 justify-end">
+                        <span className="inline-flex items-center gap-1 rounded-md bg-success-soft px-2.5 py-1 text-[11.5px] font-bold text-success border border-success/30">
+                          <CheckIcon size={14} />
+                          {selectedThread.order?.order_status || 'Order Confirmed'}
+                        </span>
+                        <Button
+                          variant="outline"
+                          className="h-7 px-2 text-[11px]"
+                          onClick={() => setIsEditingOrder(!isEditingOrder)}
+                        >
+                          <EditIcon size={12} />
+                          {isEditingOrder ? 'Close' : 'Edit Order'}
+                        </Button>
+                      </div>
                       <p className="mt-1 text-[11px] text-ink-muted capitalize">
-                        {selectedThread.payment_method?.replace(/_/g, ' ') || 'Meetup'}
+                        {selectedThread.order?.payment_method?.replace(/_/g, ' ') || selectedThread.payment_method?.replace(/_/g, ' ') || 'Meetup'} · {selectedThread.order?.delivery_address || 'Central Campus'}
                       </p>
                     </div>
                   )}
                 </div>
+
+                {isEditingOrder && (
+                  <OrderEditInlineForm
+                    thread={selectedThread}
+                    onSave={onUpdateOrder ?? (() => {})}
+                    onCancel={() => setIsEditingOrder(false)}
+                    onToast={onToast}
+                  />
+                )}
               </div>
 
               {/* Chronological Chat Messages & Handshake Stream */}
@@ -524,6 +697,37 @@ export function ConnectionsView({ connections, onToast }: ConnectionsViewProps) 
                 <div className="space-y-2.5 rounded-xl border border-line bg-surface-2/40 p-4">
                   {selectedThread.messages.map((msg) => {
                     const isBuyer = msg.sender_id === selectedThread.buyer.id
+
+                    if (msg.is_admin_note) {
+                      return (
+                        <div
+                          key={msg.id}
+                          className="my-3 rounded-xl border border-brand/40 bg-brand-soft/40 p-3.5 shadow-xs"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-1.5 font-bold text-[12px] text-brand-strong">
+                              <ShieldIcon size={14} />
+                              Official CampusMart Moderation Note
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                onDeleteChatMessage?.(msg.id)
+                                onToast('Admin note removed.', 'neutral')
+                              }}
+                              title="Delete notice"
+                              className="text-ink-faint hover:text-critical p-0.5 transition-colors cursor-pointer"
+                            >
+                              <TrashIcon size={13} />
+                            </button>
+                          </div>
+                          <p className="mt-1.5 text-[13px] leading-relaxed text-ink font-medium">
+                            {msg.message}
+                          </p>
+                          <span className="mt-1 block text-[10.5px] text-ink-faint">{msg.created_at}</span>
+                        </div>
+                      )
+                    }
 
                     if (msg.is_order_card) {
                       return (
@@ -560,12 +764,23 @@ export function ConnectionsView({ connections, onToast }: ConnectionsViewProps) 
                     return (
                       <div
                         key={msg.id}
-                        className={`flex flex-col ${isBuyer ? 'items-start' : 'items-end'}`}
+                        className={`group flex flex-col ${isBuyer ? 'items-start' : 'items-end'}`}
                       >
                         <div className="flex items-center gap-1.5 text-[11px] text-ink-faint mb-0.5">
                           <span className="font-semibold text-ink-muted">{msg.sender_name}</span>
                           <span>·</span>
                           <span>{msg.created_at}</span>
+                          <button
+                            type="button"
+                            title="Delete inappropriate message"
+                            onClick={() => {
+                              onDeleteChatMessage?.(msg.id)
+                              onToast('Message deleted by admin.', 'neutral')
+                            }}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity text-ink-faint hover:text-critical p-0.5 cursor-pointer ml-1"
+                          >
+                            <TrashIcon size={11} />
+                          </button>
                         </div>
                         <div
                           className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-[13px] leading-relaxed ${
@@ -586,6 +801,40 @@ export function ConnectionsView({ connections, onToast }: ConnectionsViewProps) 
                       </div>
                     )
                   })}
+                </div>
+              </div>
+
+              {/* Official Admin Intervention Note Box */}
+              <div className="rounded-xl border border-brand/30 bg-surface-2/70 p-3.5 space-y-2">
+                <div className="flex items-center gap-1.5 font-semibold text-[12px] text-ink">
+                  <ShieldIcon size={14} className="text-brand-strong" />
+                  Post Official Admin Intervention Note
+                </div>
+                <p className="text-[11.5px] text-ink-muted">
+                  Inject an official moderation warning or meetup notice visible to both students.
+                </p>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={adminNoteText}
+                    onChange={(e) => setAdminNoteText(e.target.value)}
+                    placeholder="e.g. Please verify item in daylight before completing handover…"
+                    className="h-8.5 flex-1 rounded-lg border border-line bg-surface px-3 text-[12px] text-ink focus:border-brand focus:outline-none"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && adminNoteText.trim()) {
+                        handleSendIntervention()
+                      }
+                    }}
+                  />
+                  <Button
+                    variant="primary"
+                    className="h-8.5 px-3 text-[12px] whitespace-nowrap"
+                    disabled={!adminNoteText.trim() || sendingNote}
+                    onClick={handleSendIntervention}
+                  >
+                    <ShieldIcon size={13} />
+                    {sendingNote ? 'Sending…' : 'Send Note'}
+                  </Button>
                 </div>
               </div>
             </div>

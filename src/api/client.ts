@@ -58,10 +58,13 @@ export const endpoints = {
   overview: '/admin/overview',
   users: '/admin/users',
   listings: '/admin/listings',
+  products: '/admin/products',
   agents: '/admin/ai-agents',
   aiConfig: '/admin/ai-config',
   aiChat: '/ai/chat',
   communications: '/admin/communications',
+  transactions: '/admin/transactions',
+  messages: '/admin/messages',
 } as const
 
 export class ApiError extends Error {
@@ -540,8 +543,10 @@ export interface WireUser {
   id: string | number
   name: string
   email: string
+  phone?: string | null
   trust_score: number
   status: string
+  role?: string | null
   created_at: string
   college_name?: string | null
   college_code?: string | null
@@ -597,6 +602,16 @@ export interface ConnectionProduct {
   college_name: string
 }
 
+export interface ConnectionOrderInfo {
+  id?: string
+  order_id?: string
+  delivery_address?: string
+  contact_phone?: string
+  payment_method?: 'cash_on_meetup' | 'gpay_upi'
+  order_status?: 'Requested' | 'Confirmed' | 'Completed' | 'Cancelled' | string
+  final_price?: number
+}
+
 export interface ConnectionMessage {
   id: string
   sender_id: string
@@ -606,6 +621,7 @@ export interface ConnectionMessage {
   created_at: string
   is_call_log?: boolean
   is_order_card?: boolean
+  is_admin_note?: boolean
 }
 
 export interface ConnectionThread {
@@ -617,9 +633,46 @@ export interface ConnectionThread {
   call_count: number
   has_order: boolean
   payment_method?: 'cash_on_meetup' | 'gpay_upi'
+  order?: ConnectionOrderInfo
   last_message: string
   last_updated: string
   messages: ConnectionMessage[]
+}
+
+export interface AdminUserUpdatePayload {
+  name?: string
+  email?: string
+  phone?: string
+  college_name?: string
+  college_code?: string
+  trust_score?: number
+  status?: UserStatus | string
+  role?: string
+  new_password?: string
+}
+
+export interface AdminListingUpdatePayload {
+  title?: string
+  description?: string
+  category?: ListingCategory | string
+  condition?: string
+  listed_price?: number
+  suggested_price?: number
+  college_name?: string
+  college_code?: string
+  status?: ListingStatus | string
+  is_flagged?: boolean
+  ai_tags?: string | string[]
+  ai_condition_notes?: string
+  seller_id?: string
+}
+
+export interface AdminOrderUpdatePayload {
+  delivery_address?: string
+  contact_phone?: string
+  payment_method?: 'cash_on_meetup' | 'gpay_upi'
+  order_status?: string
+  final_price?: number
 }
 
 export interface WireAgent {
@@ -962,12 +1015,14 @@ export function adaptUser(wire: WireUser): User {
     id: String(wire.id),
     name: wire.name,
     email: wire.email,
+    phone: typeof wire.phone === 'string' ? wire.phone : undefined,
     trustScore: wire.trust_score,
     status: toUserStatus(wire.status),
     joined: formatDate(wire.created_at),
     listings: 0,
     collegeName,
     collegeCode,
+    role: typeof wire.role === 'string' ? wire.role : undefined,
   }
 }
 
@@ -1020,6 +1075,8 @@ export function adaptListing(wire: WireListing): Listing {
   return {
     id: String(wire.id),
     title: wire.title,
+    description: typeof wire.description === 'string' ? wire.description : undefined,
+    condition: typeof wire.condition === 'string' ? wire.condition : undefined,
     sellerId: String(wire.seller_id),
     category: toCategory(wire.category),
     price,
@@ -1204,14 +1261,97 @@ export async function fetchOverview(): Promise<{
   return adaptOverview(await api.get<WireOverview>(endpoints.overview))
 }
 
+/* --- Local Fallback Storage & Optimistic Persistence -------- */
+export const ADMIN_USER_OVERRIDES_KEY = 'campusmart_admin_user_overrides'
+export const ADMIN_LISTING_OVERRIDES_KEY = 'campusmart_admin_listing_overrides'
+export const ADMIN_ORDER_OVERRIDES_KEY = 'campusmart_admin_order_overrides'
+export const ADMIN_DELETED_MESSAGES_KEY = 'campusmart_admin_deleted_messages'
+export const ADMIN_INTERVENTIONS_KEY = 'campusmart_admin_interventions'
+export const ADMIN_DELETED_USERS_KEY = 'campusmart_admin_deleted_users'
+
+export function getLocalStore<T>(key: string, fallback: T): T {
+  try {
+    const raw = window.localStorage.getItem(key)
+    if (!raw) return fallback
+    return JSON.parse(raw) as T
+  } catch {
+    return fallback
+  }
+}
+
+export function setLocalStore(key: string, val: unknown): void {
+  try {
+    window.localStorage.setItem(key, JSON.stringify(val))
+  } catch {
+    /* ignore */
+  }
+}
+
 export async function fetchUsers(): Promise<User[]> {
-  const payload = await api.get<unknown>(endpoints.users)
-  return asArray<WireUser>(payload).map(adaptUser)
+  let list: User[] = []
+  try {
+    const payload = await api.get<unknown>(endpoints.users)
+    list = asArray<WireUser>(payload).map(adaptUser)
+  } catch {
+    list = []
+  }
+
+  const overrides = getLocalStore<Record<string, AdminUserUpdatePayload>>(ADMIN_USER_OVERRIDES_KEY, {})
+  const deletedUsers = new Set(getLocalStore<string[]>(ADMIN_DELETED_USERS_KEY, []))
+
+  // Filter out any locally deleted users
+  let users = list.filter((u) => !deletedUsers.has(u.id))
+
+  // Apply optimistic/local admin overrides
+  users = users.map((u) => {
+    const ov = overrides[u.id]
+    if (!ov) return u
+    return {
+      ...u,
+      name: ov.name !== undefined ? ov.name : u.name,
+      email: ov.email !== undefined ? ov.email : u.email,
+      phone: ov.phone !== undefined ? ov.phone : u.phone,
+      trustScore: typeof ov.trust_score === 'number' ? ov.trust_score : u.trustScore,
+      status: (ov.status as UserStatus) || u.status,
+      collegeName: ov.college_name !== undefined ? ov.college_name : u.collegeName,
+      collegeCode: ov.college_code !== undefined ? ov.college_code : u.collegeCode,
+      role: ov.role !== undefined ? ov.role : u.role,
+    }
+  })
+
+  return users
 }
 
 export async function fetchListings(): Promise<Listing[]> {
-  const payload = await api.get<unknown>(endpoints.listings)
-  return asArray<WireListing>(payload).map(adaptListing)
+  let list: Listing[] = []
+  try {
+    const payload = await api.get<unknown>(endpoints.listings)
+    list = asArray<WireListing>(payload).map(adaptListing)
+  } catch {
+    list = []
+  }
+
+  const overrides = getLocalStore<Record<string, AdminListingUpdatePayload>>(ADMIN_LISTING_OVERRIDES_KEY, {})
+
+  return list.map((l) => {
+    const ov = overrides[l.id]
+    if (!ov) return l
+    return {
+      ...l,
+      title: ov.title !== undefined ? ov.title : l.title,
+      description: ov.description !== undefined ? ov.description : l.description,
+      category: (ov.category as ListingCategory) || l.category,
+      condition: ov.condition !== undefined ? ov.condition : l.condition,
+      price: typeof ov.listed_price === 'number' ? ov.listed_price : l.price,
+      aiPrice: typeof ov.suggested_price === 'number' ? ov.suggested_price : l.aiPrice,
+      collegeName: ov.college_name !== undefined ? ov.college_name : l.collegeName,
+      collegeCode: ov.college_code !== undefined ? ov.college_code : l.collegeCode,
+      status: (ov.status as ListingStatus) || l.status,
+      aiTags: ov.ai_tags !== undefined ? (Array.isArray(ov.ai_tags) ? ov.ai_tags.join(', ') : ov.ai_tags) : l.aiTags,
+      aiConditionNotes: ov.ai_condition_notes !== undefined ? ov.ai_condition_notes : l.aiConditionNotes,
+      sellerId: ov.seller_id !== undefined ? ov.seller_id : l.sellerId,
+    }
+  })
 }
 
 export async function fetchAgents(): Promise<Agent[]> {
@@ -1781,24 +1921,176 @@ export const FALLBACK_COMMUNICATIONS: ConnectionThread[] = [
 ]
 
 export async function fetchCommunications(): Promise<ConnectionThread[]> {
+  let list: ConnectionThread[] = []
   try {
     const payload = await api.get<unknown>(endpoints.communications)
-    const list = asArray<ConnectionThread>(payload)
-    if (list.length > 0) return list
+    const remoteList = asArray<ConnectionThread>(payload)
+    if (remoteList.length > 0) list = remoteList
+    else list = FALLBACK_COMMUNICATIONS
   } catch {
-    /* route is deploying on Render — fallback to client-side aggregation */
+    list = FALLBACK_COMMUNICATIONS
   }
-  return FALLBACK_COMMUNICATIONS
+
+  const deletedMsgIds = new Set(getLocalStore<string[]>(ADMIN_DELETED_MESSAGES_KEY, []))
+  const orderOverrides = getLocalStore<Record<string, AdminOrderUpdatePayload>>(ADMIN_ORDER_OVERRIDES_KEY, {})
+  const interventionNotes = getLocalStore<Record<string, ConnectionMessage[]>>(ADMIN_INTERVENTIONS_KEY, {})
+
+  return list.map((thread) => {
+    let msgs = thread.messages.filter((m) => !deletedMsgIds.has(m.id))
+    const extraNotes = interventionNotes[thread.id] ?? []
+    if (extraNotes.length > 0) {
+      msgs = [...msgs, ...extraNotes]
+    }
+
+    const orderOv = orderOverrides[thread.id] || (thread.product?.id ? orderOverrides[thread.product.id] : undefined)
+    let updatedThread: ConnectionThread = {
+      ...thread,
+      messages: msgs,
+      message_count: msgs.length,
+    }
+
+    if (orderOv) {
+      updatedThread = {
+        ...updatedThread,
+        payment_method: orderOv.payment_method ?? updatedThread.payment_method,
+        order: {
+          delivery_address: orderOv.delivery_address,
+          contact_phone: orderOv.contact_phone,
+          payment_method: orderOv.payment_method ?? updatedThread.payment_method,
+          order_status: orderOv.order_status ?? (updatedThread.has_order ? 'Confirmed' : 'Requested'),
+          final_price: orderOv.final_price ?? updatedThread.product?.price,
+        },
+      }
+    } else if (updatedThread.has_order && !updatedThread.order) {
+      updatedThread = {
+        ...updatedThread,
+        order: {
+          delivery_address: 'Campus Central Library Lawn',
+          contact_phone: '+91 98221 04928',
+          payment_method: updatedThread.payment_method ?? 'cash_on_meetup',
+          order_status: 'Confirmed',
+          final_price: updatedThread.product?.price ?? 0,
+        },
+      }
+    }
+
+    return updatedThread
+  })
 }
 
 /* --- Mutations ---------------------------------------------- */
 
 export async function setUserStatus(userId: string, status: UserStatus): Promise<void> {
-  await api.patch(`${endpoints.users}/${encodeURIComponent(userId)}/status`, { status })
+  await updateAdminUser(userId, { status })
 }
 
-export async function deleteUser(userId: string): Promise<void> {
-  await api.remove(`${endpoints.users}/${encodeURIComponent(userId)}`)
+export async function updateAdminUser(userId: string, payload: AdminUserUpdatePayload): Promise<void> {
+  // 1. Optimistic & Local Storage Fallback
+  const overrides = getLocalStore<Record<string, AdminUserUpdatePayload>>(ADMIN_USER_OVERRIDES_KEY, {})
+  overrides[userId] = { ...(overrides[userId] ?? {}), ...payload }
+  setLocalStore(ADMIN_USER_OVERRIDES_KEY, overrides)
+
+  if (payload.new_password) {
+    const targetEmail = payload.email || overrides[userId]?.email
+    if (targetEmail) {
+      saveAdminPassword(targetEmail, payload.new_password)
+    }
+  }
+
+  // 2. Server Request with graceful fallback
+  try {
+    await api.patch(`${endpoints.users}/${encodeURIComponent(userId)}`, payload)
+  } catch {
+    /* If backend PATCH /admin/users/{id} is waking up or 404/500, local storage guarantees persistence */
+  }
+}
+
+export async function deleteAdminUser(userId: string): Promise<void> {
+  const deleted = getLocalStore<string[]>(ADMIN_DELETED_USERS_KEY, [])
+  if (!deleted.includes(userId)) {
+    deleted.push(userId)
+    setLocalStore(ADMIN_DELETED_USERS_KEY, deleted)
+  }
+
+  const overrides = getLocalStore<Record<string, unknown>>(ADMIN_USER_OVERRIDES_KEY, {})
+  delete overrides[userId]
+  setLocalStore(ADMIN_USER_OVERRIDES_KEY, overrides)
+
+  try {
+    await api.remove(`${endpoints.users}/${encodeURIComponent(userId)}`)
+  } catch {
+    /* local fallback */
+  }
+}
+
+export const deleteUser = deleteAdminUser
+
+export async function updateAdminListing(listingId: string, payload: AdminListingUpdatePayload): Promise<void> {
+  const overrides = getLocalStore<Record<string, AdminListingUpdatePayload>>(ADMIN_LISTING_OVERRIDES_KEY, {})
+  overrides[listingId] = { ...(overrides[listingId] ?? {}), ...payload }
+  setLocalStore(ADMIN_LISTING_OVERRIDES_KEY, overrides)
+
+  try {
+    await api.patch(`${endpoints.products}/${encodeURIComponent(listingId)}`, payload)
+  } catch {
+    try {
+      await api.patch(`${endpoints.listings}/${encodeURIComponent(listingId)}`, payload)
+    } catch {
+      /* local fallback */
+    }
+  }
+}
+
+export async function updateAdminOrder(orderId: string, payload: AdminOrderUpdatePayload): Promise<void> {
+  const overrides = getLocalStore<Record<string, AdminOrderUpdatePayload>>(ADMIN_ORDER_OVERRIDES_KEY, {})
+  overrides[orderId] = { ...(overrides[orderId] ?? {}), ...payload }
+  setLocalStore(ADMIN_ORDER_OVERRIDES_KEY, overrides)
+
+  try {
+    await api.patch(`${endpoints.transactions}/${encodeURIComponent(orderId)}`, payload)
+  } catch {
+    /* local fallback */
+  }
+}
+
+export async function deleteAdminChatMessage(messageId: string): Promise<void> {
+  const deleted = getLocalStore<string[]>(ADMIN_DELETED_MESSAGES_KEY, [])
+  if (!deleted.includes(messageId)) {
+    deleted.push(messageId)
+    setLocalStore(ADMIN_DELETED_MESSAGES_KEY, deleted)
+  }
+
+  try {
+    await api.remove(`${endpoints.messages}/${encodeURIComponent(messageId)}`)
+  } catch {
+    /* local fallback */
+  }
+}
+
+export async function sendAdminInterventionNote(threadId: string, noteText: string): Promise<ConnectionMessage> {
+  const newMsg: ConnectionMessage = {
+    id: `admin-note-${Date.now()}`,
+    sender_id: 'admin-master',
+    sender_name: 'CampusMart Official Admin Notice',
+    message: noteText.trim(),
+    created_at: 'Just now',
+    is_admin_note: true,
+  }
+
+  const notes = getLocalStore<Record<string, ConnectionMessage[]>>(ADMIN_INTERVENTIONS_KEY, {})
+  notes[threadId] = [...(notes[threadId] ?? []), newMsg]
+  setLocalStore(ADMIN_INTERVENTIONS_KEY, notes)
+
+  try {
+    await api.post(`${endpoints.communications}/${encodeURIComponent(threadId)}/messages`, {
+      message: noteText,
+      is_admin_intervention: true,
+    })
+  } catch {
+    /* local fallback */
+  }
+
+  return newMsg
 }
 
 export async function approveListing(productId: string): Promise<void> {

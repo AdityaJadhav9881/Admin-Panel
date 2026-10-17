@@ -1,13 +1,21 @@
 import { useMemo, useState } from 'react'
+import type { AdminUserUpdatePayload } from '../../api/client'
 import { isProtectedAdminEmail, isSuperAdminEmail } from '../../api/client'
 import type { User } from '../../data/mock'
-import { formatCollegeBadge, formatTrustScore, trustBand, trustPercent } from '../../data/mock'
+import {
+  MAHARASHTRA_COLLEGES,
+  formatCollegeBadge,
+  formatTrustScore,
+  trustBand,
+  trustPercent,
+} from '../../data/mock'
 import { initials } from '../../lib/format'
-import { AcademicCapIcon, ChevronDownIcon, SearchIcon, TrashIcon } from '../icons'
+import { AcademicCapIcon, ChevronDownIcon, EditIcon, SearchIcon, TrashIcon } from '../icons'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { Panel } from '../ui/Panel'
+import { UserEditDrawer } from '../users/UserEditDrawer'
 
 export type UserFilter = 'all' | 'active' | 'blocked'
 export type UserViewMode = 'table' | 'colleges'
@@ -20,6 +28,12 @@ interface UsersViewProps {
   onFilterChange: (value: UserFilter) => void
   onToggleStatus: (user: User) => void
   onDeleteUser: (user: User) => void
+  onUpdateUser: (
+    userId: string,
+    payload: AdminUserUpdatePayload,
+    updateListingsCollege?: boolean,
+  ) => void
+  onBulkUpdateCollege?: (userIds: string[], collegeName: string, collegeCode: string) => void
 }
 
 const FILTERS: { id: UserFilter; label: string }[] = [
@@ -53,6 +67,8 @@ export function UsersView({
   onFilterChange,
   onToggleStatus,
   onDeleteUser,
+  onUpdateUser,
+  onBulkUpdateCollege,
 }: UsersViewProps) {
   const [viewMode, setViewMode] = useState<UserViewMode>('table')
   const [collegeFilter, setCollegeFilter] = useState<string>('all')
@@ -60,6 +76,9 @@ export function UsersView({
 
   const [pendingBlock, setPendingBlock] = useState<User | null>(null)
   const [pendingDelete, setPendingDelete] = useState<User | null>(null)
+  const [editingUser, setEditingUser] = useState<User | null>(null)
+  const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set())
+  const [bulkCollegeValue, setBulkCollegeValue] = useState('')
 
   const counts = {
     all: users.length,
@@ -102,6 +121,37 @@ export function UsersView({
 
     return matchesFilter && matchesCollege && matchesQuery
   })
+
+  const toggleSelectUser = (id: string) => {
+    setSelectedUserIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const selectAllVisible = () => {
+    if (selectedUserIds.size === visible.length) {
+      setSelectedUserIds(new Set())
+    } else {
+      setSelectedUserIds(new Set(visible.map((u) => u.id)))
+    }
+  }
+
+  const handleBulkReassignSubmit = () => {
+    if (!bulkCollegeValue || selectedUserIds.size === 0) return
+    const [cName, cCode] = bulkCollegeValue.split('|')
+    if (onBulkUpdateCollege) {
+      onBulkUpdateCollege(Array.from(selectedUserIds), cName, cCode)
+    } else {
+      for (const uid of selectedUserIds) {
+        onUpdateUser(uid, { college_name: cName, college_code: cCode }, true)
+      }
+    }
+    setSelectedUserIds(new Set())
+    setBulkCollegeValue('')
+  }
 
   // Group visible users by college
   const collegeGroups: CollegeGroup[] = useMemo(() => {
@@ -261,6 +311,47 @@ export function UsersView({
           </div>
         }
       >
+        {/* Bulk Reassign Action Bar */}
+        {selectedUserIds.size > 0 && (
+          <div className="m-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-brand/30 bg-brand-soft/40 px-4 py-3 text-[13px]">
+            <div className="flex items-center gap-2">
+              <span className="font-semibold text-brand-strong">
+                {selectedUserIds.size} student{selectedUserIds.size === 1 ? '' : 's'} selected
+              </span>
+              <button
+                type="button"
+                onClick={() => setSelectedUserIds(new Set())}
+                className="text-[12px] text-ink-muted hover:text-ink underline ml-1 cursor-pointer"
+              >
+                Deselect all
+              </button>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={bulkCollegeValue}
+                onChange={(e) => setBulkCollegeValue(e.target.value)}
+                className="h-8.5 rounded-lg border border-line bg-surface px-2.5 text-[12.5px] text-ink"
+                aria-label="Target College for Bulk Reassign"
+              >
+                <option value="">Select target campus…</option>
+                {MAHARASHTRA_COLLEGES.map((c) => (
+                  <option key={c.code} value={`${c.name}|${c.code}`}>
+                    {c.code} — {c.name}
+                  </option>
+                ))}
+              </select>
+              <Button
+                variant="primary"
+                className="h-8.5 px-3.5 text-[12.5px]"
+                disabled={!bulkCollegeValue}
+                onClick={handleBulkReassignSubmit}
+              >
+                Reassign Campus
+              </Button>
+            </div>
+          </div>
+        )}
+
         {visible.length === 0 ? (
           <div className="px-5 py-14 text-center">
             <span className="mx-auto grid h-11 w-11 place-items-center rounded-full bg-subtle text-ink-faint">
@@ -394,6 +485,14 @@ export function UsersView({
                                   <td className="py-2.5 pl-4 text-right">
                                     <div className="flex items-center justify-end gap-1.5">
                                       <Button
+                                        variant="outline"
+                                        className="h-7 px-2 text-[11.5px]"
+                                        onClick={() => setEditingUser(student)}
+                                      >
+                                        <EditIcon size={13} />
+                                        Edit
+                                      </Button>
+                                      <Button
                                         variant={blocked ? 'outline' : 'danger-quiet'}
                                         className="h-7 px-2.5 text-[11.5px]"
                                         disabled={protectedAdmin && !blocked}
@@ -494,6 +593,14 @@ export function UsersView({
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
                         <Button
+                          variant="outline"
+                          className="h-8 px-2 text-[12px]"
+                          onClick={() => setEditingUser(user)}
+                        >
+                          <EditIcon size={13} />
+                          Edit
+                        </Button>
+                        <Button
                           variant={blocked ? 'outline' : 'danger-quiet'}
                           className="h-8 min-w-[78px] px-2 text-[12px]"
                           disabled={protectedAdmin && !blocked}
@@ -522,6 +629,15 @@ export function UsersView({
               <table className="w-full min-w-[840px] border-collapse text-left">
                 <thead>
                   <tr className="border-b border-line">
+                    <th scope="col" className="w-10 px-4 py-3">
+                      <input
+                        type="checkbox"
+                        aria-label="Select all visible students"
+                        checked={visible.length > 0 && selectedUserIds.size === visible.length}
+                        onChange={selectAllVisible}
+                        className="h-4 w-4 rounded border-line text-brand focus:ring-brand accent-brand cursor-pointer"
+                      />
+                    </th>
                     {['Name', 'Campus & CET Cell Code', 'Email', 'Trust score', 'Status', 'Actions'].map(
                       (heading, index) => (
                         <th
@@ -551,6 +667,15 @@ export function UsersView({
                           blocked ? 'bg-surface-2/60' : ''
                         }`}
                       >
+                        <td className="w-10 px-4 py-3.5">
+                          <input
+                            type="checkbox"
+                            aria-label={`Select ${user.name}`}
+                            checked={selectedUserIds.has(user.id)}
+                            onChange={() => toggleSelectUser(user.id)}
+                            className="h-4 w-4 rounded border-line text-brand focus:ring-brand accent-brand cursor-pointer"
+                          />
+                        </td>
                         <td className="px-5 py-3.5">
                           <div className="flex items-center gap-3">
                             <span
@@ -627,6 +752,14 @@ export function UsersView({
                         <td className="px-5 py-3.5">
                           <div className="flex items-center justify-end gap-2">
                             <Button
+                              variant="outline"
+                              className="h-8 px-2.5 text-[12.5px]"
+                              onClick={() => setEditingUser(user)}
+                            >
+                              <EditIcon size={14} />
+                              Edit
+                            </Button>
+                            <Button
                               variant={blocked ? 'outline' : 'danger-quiet'}
                               className="h-8 min-w-[80px] px-2.5 text-[12.5px]"
                               disabled={protectedAdmin && !blocked}
@@ -688,6 +821,17 @@ export function UsersView({
         onConfirm={() => {
           if (pendingDelete) onDeleteUser(pendingDelete)
           setPendingDelete(null)
+        }}
+      />
+
+      <UserEditDrawer
+        user={editingUser}
+        isOpen={editingUser !== null}
+        onClose={() => setEditingUser(null)}
+        onSave={onUpdateUser}
+        onDelete={(u) => {
+          setEditingUser(null)
+          setPendingDelete(u)
         }}
       />
     </div>
