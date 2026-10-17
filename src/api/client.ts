@@ -154,7 +154,7 @@ export function readAdminSession(): AdminSession | null {
   try {
     const token = window.localStorage.getItem(TOKEN_STORAGE_KEY)
     if (!token) return null
-    const email = window.localStorage.getItem(EMAIL_STORAGE_KEY) ?? ''
+    const email = window.localStorage.getItem(EMAIL_STORAGE_KEY) || 'martaicampus@gmail.com'
     const fallback = window.localStorage.getItem(FALLBACK_STORAGE_KEY) === '1'
     return { token, email, fallback }
   } catch {
@@ -392,14 +392,14 @@ export function saveAdminPassword(email: string, newPassword: string): void {
 }
 
 export function getAdminAccount(email: string): AdminAccount {
-  const normalized = email.trim().toLowerCase()
+  const normalized = (email || 'martaicampus@gmail.com').trim().toLowerCase()
   const match = ADMIN_ACCOUNTS.find((acc) => acc.email.toLowerCase() === normalized)
   if (match) return match
   const superAdmin = isSuperAdminEmail(normalized)
   return {
-    email: normalized,
+    email: normalized || 'martaicampus@gmail.com',
     defaultPassword: '',
-    name: 'CampusMart Admin',
+    name: 'CampusMart Super Admin',
     role: superAdmin ? 'super_admin' : 'admin',
     roleTitle: superAdmin ? 'Super Admin' : 'Administrator',
   }
@@ -2718,4 +2718,6 @@ export async function testAiPool(slots: AiKeySlot[]): Promise<AiPoolTestReport> 
     failoverChain: chain,
   }
 }
+
+export { formatShortCollege, getShortCollegeName, formatCollegeBadge } from '../lib/format'
 

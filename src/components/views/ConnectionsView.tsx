@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import type { AdminOrderUpdatePayload, ConnectionThread } from '../../api/client'
-import { formatCollegeBadge, formatTrustScore } from '../../data/mock'
+import { formatCollegeBadge, formatShortCollege, formatTrustScore } from '../../data/mock'
 import { formatMoney, initials } from '../../lib/format'
 import {
   AlertIcon,
@@ -408,42 +408,48 @@ export function ConnectionsView({
                           {initials(thread.buyer.name)}
                         </span>
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-[13px] font-semibold text-ink">
+                          <p className="truncate text-[13px] font-semibold text-ink" title={thread.buyer.name}>
                             {thread.buyer.name}
                           </p>
                           <p className="text-[10px] font-medium text-ink-faint uppercase">Buyer</p>
                         </div>
                       </div>
                       <div className="mt-1">
-                        <span className="inline-block truncate rounded-md bg-subtle px-1.5 py-0.5 text-[10.5px] font-medium text-ink-muted max-w-full">
-                          {formatCollegeBadge(thread.buyer.college_name, thread.buyer.college_code)}
+                        <span
+                          className="inline-flex max-w-full items-center gap-1 rounded-md border border-brand/20 bg-brand-soft/50 px-1.5 py-0.5 text-[10.5px] font-medium text-brand-strong truncate"
+                          title={thread.buyer.college_name || undefined}
+                        >
+                          🎓 {formatShortCollege(thread.buyer.college_name, thread.buyer.college_code)}
                         </span>
                       </div>
                     </div>
 
                     {/* Arrow / Product Center */}
-                    <div className="flex items-center gap-2 rounded-lg border border-line bg-surface-2/40 px-3 py-2 min-w-0 sm:flex-1">
-                      <span className="text-[13px] font-bold text-brand">➔</span>
+                    <div className="flex items-center gap-2.5 rounded-lg border border-line bg-surface-2/40 p-2.5 min-w-0 sm:flex-1">
+                      <span className="text-[13px] font-bold text-brand shrink-0">➔</span>
                       {thread.product.image_url ? (
                         <img
                           src={thread.product.image_url}
                           alt=""
-                          className="h-10 w-10 shrink-0 rounded-md object-cover border border-line"
+                          className="h-11 w-11 shrink-0 rounded-md object-cover border border-line"
                         />
                       ) : (
-                        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-subtle text-[14px]">
+                        <div className="grid h-11 w-11 shrink-0 place-items-center rounded-md bg-subtle text-[14px]">
                           📦
                         </div>
                       )}
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-[12.5px] font-medium text-ink">
+                        <p
+                          className="line-clamp-2 text-[12.5px] font-medium text-ink leading-snug"
+                          title={thread.product.title}
+                        >
                           {thread.product.title}
                         </p>
-                        <p className="font-mono text-[12px] font-semibold text-brand">
+                        <p className="mt-0.5 font-mono text-[12px] font-semibold text-brand">
                           {formatMoney(thread.product.price)}
                         </p>
                       </div>
-                      <span className="text-[13px] font-bold text-brand">➔</span>
+                      <span className="text-[13px] font-bold text-brand shrink-0">➔</span>
                     </div>
 
                     {/* Seller Block */}
@@ -453,22 +459,25 @@ export function ConnectionsView({
                           {initials(thread.seller.name)}
                         </span>
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-[13px] font-semibold text-ink">
+                          <p className="truncate text-[13px] font-semibold text-ink" title={thread.seller.name}>
                             {thread.seller.name}
                           </p>
                           <p className="text-[10px] font-medium text-ink-faint uppercase">Seller</p>
                         </div>
                       </div>
                       <div className="mt-1 sm:text-right">
-                        <span className="inline-block truncate rounded-md bg-subtle px-1.5 py-0.5 text-[10.5px] font-medium text-ink-muted max-w-full">
-                          {formatCollegeBadge(thread.seller.college_name, thread.seller.college_code)}
+                        <span
+                          className="inline-flex max-w-full items-center gap-1 rounded-md border border-success/20 bg-success-soft/50 px-1.5 py-0.5 text-[10.5px] font-medium text-success truncate"
+                          title={thread.seller.college_name || undefined}
+                        >
+                          🎓 {formatShortCollege(thread.seller.college_name, thread.seller.college_code)}
                         </span>
                       </div>
                     </div>
                   </div>
 
                   {/* BADGES & ACTIONS */}
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line/60 pt-2 lg:border-t-0 lg:pt-0 lg:justify-end">
+                  <div className="flex flex-col gap-2.5 border-t border-line/60 pt-3 lg:flex-row lg:items-center lg:justify-between lg:border-t-0 lg:pt-0">
                     <div className="flex flex-wrap items-center gap-1.5">
                       {/* Campus Relation Pill */}
                       <span
@@ -510,7 +519,7 @@ export function ConnectionsView({
 
                     <Button
                       variant="primary"
-                      className="h-8 px-3 text-[12px]"
+                      className="h-8.5 w-full text-[12px] sm:w-auto lg:h-8"
                       onClick={() => setSelectedThreadId(thread.id)}
                     >
                       Inspect Chat &amp; Handshake
@@ -542,7 +551,7 @@ export function ConnectionsView({
             aria-hidden="true"
           />
 
-          <aside className="relative z-10 flex h-full w-full max-w-2xl flex-col border-l border-line bg-surface shadow-2xl transition-all duration-300">
+          <aside className="relative z-10 flex h-full w-full max-w-full sm:max-w-2xl flex-col border-l border-line bg-surface shadow-2xl transition-all duration-300">
             {/* Drawer Header */}
             <div className="flex items-center justify-between border-b border-line px-5 py-4">
               <div className="min-w-0">

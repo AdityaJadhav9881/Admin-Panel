@@ -39,7 +39,17 @@ import { probeImageSamples, runHealthProbes } from './api/health'
 import { LoginView } from './components/auth/LoginView'
 import { Sidebar } from './components/layout/Sidebar'
 import { Topbar } from './components/layout/Topbar'
-import { AlertIcon, CloseIcon, RefreshIcon } from './components/icons'
+import {
+  AgentsIcon,
+  AlertIcon,
+  ChatIcon,
+  CloseIcon,
+  MegaphoneIcon,
+  OverviewIcon,
+  RefreshIcon,
+  TagIcon,
+  UsersIcon,
+} from './components/icons'
 import { Button } from './components/ui/Button'
 import { ConnectingBox } from './components/ui/ConnectingBox'
 import { Toast, type ToastMessage } from './components/ui/Toast'
@@ -884,6 +894,9 @@ export default function App() {
       ? `Backend connected · ${API_HOST}`
       : `Backend unreachable · ${API_HOST}`,
   }
+  const urgentWantedCount = wantedRequests.filter(
+    (r) => r.urgency === 'urgent' && r.match_status !== 'fulfilled',
+  ).length
 
   if (!session) {
     return (
@@ -905,9 +918,9 @@ export default function App() {
         flaggedListings={flaggedListings}
         pausedAgents={pausedAgents}
         connectionsCount={connections.length}
-        wantedCount={wantedRequests.filter((r) => r.urgency === 'urgent' && r.match_status !== 'fulfilled').length}
+        wantedCount={urgentWantedCount}
         backend={backend}
-        adminEmail={session.email}
+        adminEmail={session?.email || 'martaicampus@gmail.com'}
         onSignOut={handleSignOut}
         onOpenShortcuts={() => setShortcutsHelpOpen(true)}
       />
@@ -922,12 +935,12 @@ export default function App() {
           dataMode={backendConnected ? 'live' : 'offline'}
           onRefresh={() => void loadData()}
           refreshing={refreshing}
-          adminEmail={session.email}
+          adminEmail={session?.email || 'martaicampus@gmail.com'}
           onOpenProfile={() => navigate('settings')}
           onOpenShortcuts={() => setShortcutsHelpOpen(true)}
         />
 
-        <main className="mx-auto w-full max-w-[1440px] px-5 py-6 lg:px-8 lg:py-8">
+        <main className="mx-auto w-full max-w-[1440px] px-5 py-6 pb-24 lg:px-8 lg:py-8 lg:pb-8">
           {loadError && bootstrapped && (
             <div
               role="alert"
@@ -1050,7 +1063,7 @@ export default function App() {
               {view === 'settings' && (
                 <SettingsView
                   key="settings"
-                  adminEmail={session.email}
+                  adminEmail={session?.email || 'martaicampus@gmail.com'}
                   agents={agents}
                   services={services}
                   probing={probing}
@@ -1063,6 +1076,92 @@ export default function App() {
           )}
         </main>
       </div>
+
+      {/* Mobile Bottom Quick-Nav Bar (<1024px) */}
+      <nav
+        aria-label="Mobile quick navigation"
+        className="fixed inset-x-0 bottom-0 z-40 flex h-16 items-center justify-around border-t border-line bg-surface/95 px-2 backdrop-blur-md lg:hidden"
+      >
+        <button
+          type="button"
+          onClick={() => navigate('overview')}
+          className={`relative flex flex-1 flex-col items-center justify-center py-1 text-center transition-colors cursor-pointer ${
+            view === 'overview' ? 'text-brand font-semibold' : 'text-ink-muted hover:text-ink'
+          }`}
+        >
+          <OverviewIcon size={19} />
+          <span className="mt-1 text-[10.5px]">Overview</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => navigate('listings')}
+          className={`relative flex flex-1 flex-col items-center justify-center py-1 text-center transition-colors cursor-pointer ${
+            view === 'listings' ? 'text-brand font-semibold' : 'text-ink-muted hover:text-ink'
+          }`}
+        >
+          <div className="relative">
+            <TagIcon size={19} />
+            {metrics.flaggedCount > 0 && (
+              <span className="absolute -top-1 -right-2 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-critical px-1 text-[9px] font-bold text-white">
+                {metrics.flaggedCount}
+              </span>
+            )}
+          </div>
+          <span className="mt-1 text-[10.5px]">Listings</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => navigate('wanted')}
+          className={`relative flex flex-1 flex-col items-center justify-center py-1 text-center transition-colors cursor-pointer ${
+            view === 'wanted' ? 'text-brand font-semibold' : 'text-ink-muted hover:text-ink'
+          }`}
+        >
+          <div className="relative">
+            <MegaphoneIcon size={19} />
+            {urgentWantedCount > 0 && (
+              <span className="absolute -top-1 -right-2 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-warning px-1 text-[9px] font-bold text-white">
+                {urgentWantedCount}
+              </span>
+            )}
+          </div>
+          <span className="mt-1 text-[10.5px]">Wanted</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => navigate('users')}
+          className={`relative flex flex-1 flex-col items-center justify-center py-1 text-center transition-colors cursor-pointer ${
+            view === 'users' ? 'text-brand font-semibold' : 'text-ink-muted hover:text-ink'
+          }`}
+        >
+          <UsersIcon size={19} />
+          <span className="mt-1 text-[10.5px]">Users</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => navigate('connections')}
+          className={`relative flex flex-1 flex-col items-center justify-center py-1 text-center transition-colors cursor-pointer ${
+            view === 'connections' ? 'text-brand font-semibold' : 'text-ink-muted hover:text-ink'
+          }`}
+        >
+          <ChatIcon size={19} />
+          <span className="mt-1 text-[10.5px]">Links</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => navigate('settings')}
+          className={`relative flex flex-1 flex-col items-center justify-center py-1 text-center transition-colors cursor-pointer ${
+            view === 'settings' ? 'text-brand font-semibold' : 'text-ink-muted hover:text-ink'
+          }`}
+        >
+          <AgentsIcon size={19} />
+          <span className="mt-1 text-[10.5px]">Settings</span>
+        </button>
+      </nav>
 
       <Toast message={toast} />
       <KeyboardShortcutsModal

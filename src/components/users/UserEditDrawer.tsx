@@ -69,7 +69,7 @@ export function UserEditDrawer({
       />
 
       {/* Slide-over Drawer */}
-      <div className="fixed inset-y-0 right-0 max-w-full flex pl-10">
+      <div className="fixed inset-y-0 right-0 w-full max-w-full sm:max-w-xl flex pl-0 sm:pl-10">
         <UserEditForm
           key={user.id}
           user={user}
@@ -157,7 +157,7 @@ function UserEditForm({
   }
 
   return (
-    <div className="drawer-enter w-screen max-w-xl bg-surface border-l border-line shadow-2xl flex flex-col">
+    <div className="drawer-enter w-full max-w-full sm:max-w-xl bg-surface border-l border-line shadow-2xl flex flex-col">
       {/* Header */}
       <div className="px-6 py-5 border-b border-line bg-surface-2/40 flex items-center justify-between">
         <div className="min-w-0 flex-1">

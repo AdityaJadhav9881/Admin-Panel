@@ -4,7 +4,7 @@ import { isProtectedAdminEmail, isSuperAdminEmail } from '../../api/client'
 import type { User } from '../../data/mock'
 import {
   MAHARASHTRA_COLLEGES,
-  formatCollegeBadge,
+  formatShortCollege,
   formatTrustScore,
   trustBand,
   trustPercent,
@@ -214,104 +214,120 @@ export function UsersView({
   return (
     <div className="view-enter space-y-6">
       <Panel
-        title="User & Campus Directory"
+        title="Users & Campus Directory"
         caption="Review verified students, trust scores, and CET Cell institutes across Maharashtra."
         action={
-          <div className="flex w-full flex-wrap items-center gap-2.5 sm:w-auto sm:justify-end">
-            {/* View Mode Segmented Control */}
-            <div
-              role="group"
-              aria-label="View mode"
-              className="inline-flex rounded-lg border border-line bg-surface p-0.5"
-            >
-              <button
-                type="button"
-                onClick={() => setViewMode('table')}
-                className={`h-8 rounded-[7px] px-3 text-[12.5px] font-medium transition-colors ${
-                  viewMode === 'table'
-                    ? 'bg-brand text-white shadow-sm'
-                    : 'text-ink-muted hover:text-ink'
-                }`}
-              >
-                All Users Table
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode('colleges')}
-                className={`inline-flex items-center gap-1.5 h-8 rounded-[7px] px-3 text-[12.5px] font-medium transition-colors ${
-                  viewMode === 'colleges'
-                    ? 'bg-brand text-white shadow-sm'
-                    : 'text-ink-muted hover:text-ink'
-                }`}
-              >
-                <AcademicCapIcon size={14} />
-                Grouped by College
-              </button>
-            </div>
-
-            {/* College Dropdown Filter */}
-            <select
-              value={collegeFilter}
-              onChange={(e) => setCollegeFilter(e.target.value)}
-              className="h-9 rounded-lg border border-line bg-surface px-2.5 text-[12.5px] text-ink transition-colors hover:border-line-strong focus:border-brand focus:outline-none"
-              aria-label="Filter by college"
-            >
-              <option value="all">🎓 All Campuses ({users.length})</option>
-              {collegeOptions.map((c) => (
-                <option key={c.name} value={c.name}>
-                  {c.name} · CET {c.code} ({c.count})
-                </option>
-              ))}
-            </select>
-
-            {/* Search Input */}
-            <div className="relative">
-              <SearchIcon
-                size={16}
-                className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-ink-faint"
-              />
-              <input
-                type="search"
-                data-search-input="true"
-                value={query}
-                onChange={(event) => onQueryChange(event.target.value)}
-                placeholder="Search student, email, college…"
-                aria-label="Search users by name, email or college"
-                className="h-9 w-full rounded-lg border border-line bg-surface pr-3 pl-9 text-[13px] text-ink transition-colors placeholder:text-ink-faint hover:border-line-strong focus:border-brand sm:w-60"
-              />
-            </div>
-
-            {/* Status Filter */}
-            <div
-              role="group"
-              aria-label="Filter by status"
-              className="inline-flex rounded-lg border border-line bg-surface p-0.5"
-            >
-              {FILTERS.map((item) => {
-                const active = filter === item.id
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    aria-pressed={active}
-                    onClick={() => onFilterChange(item.id)}
-                    className={`h-8 rounded-[7px] px-3 text-[13px] whitespace-nowrap transition-colors duration-150 ${
-                      active
-                        ? 'bg-brand-soft font-medium text-brand-strong'
-                        : 'text-ink-muted hover:bg-surface-2 hover:text-ink'
-                    }`}
-                  >
-                    {item.label}
-                    <span className="tabular ml-1.5 text-[12px] opacity-70">
-                      {counts[item.id]}
-                    </span>
-                  </button>
-                )
-              })}
-            </div>
+          <div
+            role="group"
+            aria-label="Filter by status"
+            className="inline-flex rounded-lg border border-line bg-surface p-0.5 shrink-0"
+          >
+            {FILTERS.map((item) => {
+              const active = filter === item.id
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => onFilterChange(item.id)}
+                  className={`h-8 rounded-[7px] px-3 text-[13px] whitespace-nowrap transition-colors duration-150 ${
+                    active
+                      ? 'bg-brand-soft font-medium text-brand-strong'
+                      : 'text-ink-muted hover:bg-surface-2 hover:text-ink'
+                  }`}
+                >
+                  {item.label}
+                  <span className="tabular ml-1.5 text-[12px] opacity-70">
+                    {counts[item.id]}
+                  </span>
+                </button>
+              )
+            })}
           </div>
         }
       >
+        {/* Row 2: Full Width Flex-Wrap Toolbar */}
+        <div className="border-b border-line bg-surface-2/40 px-5 py-3.5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-1 flex-wrap items-center gap-2.5">
+              {/* View Mode Segmented Control */}
+              <div
+                role="group"
+                aria-label="View mode"
+                className="inline-flex rounded-lg border border-line bg-surface p-0.5 shrink-0"
+              >
+                <button
+                  type="button"
+                  onClick={() => setViewMode('table')}
+                  className={`h-8 rounded-[7px] px-3 text-[12.5px] font-medium transition-colors ${
+                    viewMode === 'table'
+                      ? 'bg-brand text-white shadow-sm'
+                      : 'text-ink-muted hover:text-ink'
+                  }`}
+                >
+                  All Users Table
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('colleges')}
+                  className={`inline-flex items-center gap-1.5 h-8 rounded-[7px] px-3 text-[12.5px] font-medium transition-colors ${
+                    viewMode === 'colleges'
+                      ? 'bg-brand text-white shadow-sm'
+                      : 'text-ink-muted hover:text-ink'
+                  }`}
+                >
+                  <AcademicCapIcon size={14} />
+                  Grouped by College
+                </button>
+              </div>
+
+              {/* College Dropdown Filter */}
+              <select
+                value={collegeFilter}
+                onChange={(e) => setCollegeFilter(e.target.value)}
+                className="h-8.5 rounded-lg border border-line bg-surface px-2.5 text-[12.5px] text-ink transition-colors hover:border-line-strong focus:border-brand focus:outline-none"
+                aria-label="Filter by college"
+              >
+                <option value="all">🎓 All Campuses ({users.length})</option>
+                {collegeOptions.map((c) => (
+                  <option key={c.name} value={c.name}>
+                    {c.name} · CET {c.code} ({c.count})
+                  </option>
+                ))}
+              </select>
+
+              {/* Search Input */}
+              <div className="relative flex-1 min-w-[200px] max-w-md">
+                <SearchIcon
+                  size={16}
+                  className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-ink-faint"
+                />
+                <input
+                  type="search"
+                  data-search-input="true"
+                  value={query}
+                  onChange={(event) => onQueryChange(event.target.value)}
+                  placeholder="Search student, email, college…"
+                  aria-label="Search users by name, email or college"
+                  className="h-8.5 w-full rounded-lg border border-line bg-surface pr-3 pl-9 text-[13px] text-ink transition-colors placeholder:text-ink-faint hover:border-line-strong focus:border-brand"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 text-[12px] text-ink-muted">
+              <span>Showing {visible.length} of {users.length} students</span>
+              {(query || filter !== 'all' || collegeFilter !== 'all') && (
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="font-medium text-brand hover:underline cursor-pointer"
+                >
+                  Reset filters
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
         {/* Bulk Reassign Action Bar */}
         {selectedUserIds.size > 0 && (
           <div className="m-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-brand/30 bg-brand-soft/40 px-4 py-3 text-[13px]">
@@ -526,16 +542,17 @@ export function UsersView({
         ) : (
           /* STANDARD TABLE VIEW WITH COLLEGE BADGES */
           <>
-            {/* Mobile: stacked records */}
-            <ul className="divide-y divide-line sm:hidden">
+            {/* Mobile: stacked student cards */}
+            <ul className="divide-y divide-line md:hidden">
               {visible.map((user) => {
                 const band = trustBand(user.trustScore)
                 const blocked = user.status === 'blocked'
                 const protectedAdmin = isProtectedAdminEmail(user.email)
                 const isSuper = isSuperAdminEmail(user.email)
+                const shortCollege = formatShortCollege(user.collegeName, user.collegeCode)
 
                 return (
-                  <li key={user.id} className={`px-5 py-4 ${blocked ? 'bg-surface-2/60' : ''}`}>
+                  <li key={user.id} className={`p-4 transition-colors ${blocked ? 'bg-surface-2/60' : ''}`}>
                     <div className="flex items-start gap-3">
                       <span
                         className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg text-[12px] font-semibold ${
@@ -545,7 +562,7 @@ export function UsersView({
                         {initials(user.name)}
                       </span>
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center justify-between gap-2">
                           <p className="truncate text-[14px] font-medium text-ink">{user.name}</p>
                           <Badge tone={blocked ? 'critical' : 'success'} withDot className="shrink-0">
                             {blocked ? 'Blocked' : 'Active'}
@@ -560,42 +577,43 @@ export function UsersView({
                         </a>
 
                         {/* College badge */}
-                        <div className="mt-1.5">
-                          <span className="inline-flex items-center gap-1 rounded-md border border-brand/20 bg-brand-soft/60 px-2 py-0.5 text-[11px] font-medium text-brand-strong">
-                            {formatCollegeBadge(user.collegeName, user.collegeCode)}
+                        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                          <span
+                            className="inline-flex max-w-[240px] truncate items-center gap-1 rounded-md border border-brand/20 bg-brand-soft/60 px-2 py-0.5 text-[11px] font-medium text-brand-strong"
+                            title={user.collegeName || undefined}
+                          >
+                            🎓 {shortCollege}
                           </span>
+                          {protectedAdmin && (
+                            <Badge tone="brand" className="text-[10px]">
+                              {isSuper ? 'Super Admin' : 'Admin'}
+                            </Badge>
+                          )}
                         </div>
 
-                        {protectedAdmin && (
-                          <p className="mt-1.5">
-                            <Badge tone="brand">
-                              {isSuper ? 'Super Admin (Protected)' : 'Admin (Protected)'}
-                            </Badge>
-                          </p>
-                        )}
-                        <p className="mt-0.5 text-[12px] text-ink-faint">
+                        <p className="mt-1 text-[11.5px] text-ink-faint">
                           {user.listings} listings · joined {user.joined}
                         </p>
                       </div>
                     </div>
 
-                    <div className="mt-4 flex items-center justify-between gap-4">
-                      <div className="flex min-w-0 flex-1 items-center gap-2.5">
-                        <span className="tabular text-[13px] font-medium text-ink whitespace-nowrap">
+                    <div className="mt-3.5 flex flex-wrap items-center justify-between gap-3 border-t border-line/60 pt-3">
+                      <div className="flex items-center gap-2">
+                        <span className="tabular text-[12.5px] font-medium text-ink whitespace-nowrap">
                           {formatTrustScore(user.trustScore)} / 5.0
                         </span>
-                        <span className="h-1.5 w-16 overflow-hidden rounded-full bg-line">
+                        <span className="h-1.5 w-14 overflow-hidden rounded-full bg-line">
                           <span
                             className={`block h-full rounded-full ${BAR_TONES[band.tone]}`}
                             style={{ width: `${trustPercent(user.trustScore)}%` }}
                           />
                         </span>
-                        <span className="text-[12px] text-ink-muted">{band.label}</span>
+                        <span className="text-[11.5px] text-ink-muted">{band.label}</span>
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
                         <Button
                           variant="outline"
-                          className="h-8 px-2 text-[12px]"
+                          className="h-8 px-2.5 text-[12px]"
                           onClick={() => setEditingUser(user)}
                         >
                           <EditIcon size={13} />
@@ -603,7 +621,7 @@ export function UsersView({
                         </Button>
                         <Button
                           variant={blocked ? 'outline' : 'danger-quiet'}
-                          className="h-8 min-w-[78px] px-2 text-[12px]"
+                          className="h-8 min-w-[76px] px-2.5 text-[12px]"
                           disabled={protectedAdmin && !blocked}
                           onClick={() => requestToggle(user)}
                         >
@@ -614,9 +632,9 @@ export function UsersView({
                           className="h-8 px-2 text-[12px] text-critical"
                           disabled={protectedAdmin}
                           onClick={() => setPendingDelete(user)}
+                          title="Delete user"
                         >
                           <TrashIcon size={13} />
-                          Delete
                         </Button>
                       </div>
                     </div>
@@ -626,8 +644,17 @@ export function UsersView({
             </ul>
 
             {/* Desktop Table */}
-            <div className="hidden overflow-x-auto sm:block">
-              <table className="w-full min-w-[840px] border-collapse text-left">
+            <div className="hidden overflow-x-auto md:block">
+              <table className="w-full min-w-[980px] table-fixed border-collapse text-left">
+                <colgroup>
+                  <col className="w-10" />
+                  <col className="w-[210px]" />
+                  <col className="w-[200px]" />
+                  <col className="w-[190px]" />
+                  <col className="w-[170px]" />
+                  <col className="w-[100px]" />
+                  <col className="w-[170px]" />
+                </colgroup>
                 <thead>
                   <tr className="border-b border-line">
                     <th scope="col" className="w-10 px-4 py-3">
@@ -639,19 +666,24 @@ export function UsersView({
                         className="h-4 w-4 rounded border-line text-brand focus:ring-brand accent-brand cursor-pointer"
                       />
                     </th>
-                    {['Name', 'Campus & CET Cell Code', 'Email', 'Trust score', 'Status', 'Actions'].map(
-                      (heading, index) => (
-                        <th
-                          key={heading}
-                          scope="col"
-                          className={`px-5 py-3 text-[10.5px] font-semibold tracking-[0.09em] text-ink-faint uppercase ${
-                            index === 5 ? 'text-right' : ''
-                          }`}
-                        >
-                          {heading}
-                        </th>
-                      ),
-                    )}
+                    <th scope="col" className="px-5 py-3 text-[10.5px] font-semibold tracking-[0.09em] text-ink-faint uppercase">
+                      Name
+                    </th>
+                    <th scope="col" className="px-5 py-3 text-[10.5px] font-semibold tracking-[0.09em] text-ink-faint uppercase">
+                      Campus & CET Cell
+                    </th>
+                    <th scope="col" className="px-5 py-3 text-[10.5px] font-semibold tracking-[0.09em] text-ink-faint uppercase">
+                      Email
+                    </th>
+                    <th scope="col" className="px-5 py-3 text-[10.5px] font-semibold tracking-[0.09em] text-ink-faint uppercase">
+                      Trust score
+                    </th>
+                    <th scope="col" className="px-5 py-3 text-[10.5px] font-semibold tracking-[0.09em] text-ink-faint uppercase">
+                      Status
+                    </th>
+                    <th scope="col" className="px-5 py-3 text-[10.5px] font-semibold tracking-[0.09em] text-ink-faint uppercase text-right">
+                      Actions
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-line">
@@ -660,6 +692,7 @@ export function UsersView({
                     const blocked = user.status === 'blocked'
                     const protectedAdmin = isProtectedAdminEmail(user.email)
                     const isSuper = isSuperAdminEmail(user.email)
+                    const shortCollege = formatShortCollege(user.collegeName, user.collegeCode)
 
                     return (
                       <tr
@@ -677,8 +710,8 @@ export function UsersView({
                             className="h-4 w-4 rounded border-line text-brand focus:ring-brand accent-brand cursor-pointer"
                           />
                         </td>
-                        <td className="px-5 py-3.5">
-                          <div className="flex items-center gap-3">
+                        <td className="min-w-0 overflow-hidden px-5 py-3.5">
+                          <div className="flex items-center gap-3 min-w-0">
                             <span
                               className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg text-[12px] font-semibold ${
                                 blocked
@@ -688,81 +721,85 @@ export function UsersView({
                             >
                               {initials(user.name)}
                             </span>
-                            <span>
+                            <div className="min-w-0 flex-1">
                               <span
-                                className={`block text-[13.5px] font-medium ${
+                                className={`block truncate text-[13.5px] font-medium ${
                                   blocked ? 'text-ink-muted' : 'text-ink'
                                 }`}
+                                title={user.name}
                               >
                                 {user.name}
                               </span>
-                              <span className="block text-[12px] text-ink-faint">
+                              <span className="block truncate text-[12px] text-ink-faint">
                                 {user.listings} listings · joined {user.joined}
                               </span>
-                            </span>
+                            </div>
                           </div>
                         </td>
 
                         {/* College Column */}
-                        <td className="px-5 py-3.5">
-                          <div className="flex flex-col items-start gap-1">
-                            <span className="inline-flex items-center gap-1 rounded-md border border-brand/20 bg-brand-soft/50 px-2 py-0.5 text-[11.5px] font-medium text-brand-strong">
-                              {formatCollegeBadge(user.collegeName, user.collegeCode)}
+                        <td className="min-w-0 overflow-hidden px-5 py-3.5">
+                          <div className="flex flex-col items-start gap-1 min-w-0">
+                            <span
+                              className="inline-flex max-w-full items-center gap-1 rounded-md border border-brand/20 bg-brand-soft/50 px-2 py-0.5 text-[11.5px] font-medium text-brand-strong truncate"
+                              title={user.collegeName || undefined}
+                            >
+                              🎓 {shortCollege}
                             </span>
                           </div>
                         </td>
 
-                        <td className="px-5 py-3.5 text-[13px]">
+                        <td className="min-w-0 overflow-hidden px-5 py-3.5 text-[13px]">
                           <a
                             href={`mailto:${user.email}?subject=CampusMart%20Student%20Account%20Notice`}
-                            className="text-ink-muted hover:text-brand hover:underline"
-                            title={`Email ${user.name}`}
+                            className="block truncate text-ink-muted hover:text-brand hover:underline"
+                            title={`Email ${user.name} (${user.email})`}
                           >
                             {user.email}
                           </a>
                         </td>
 
-                        <td className="px-5 py-3.5">
-                          <div className="flex items-center gap-2.5">
+                        <td className="min-w-0 overflow-hidden px-5 py-3.5">
+                          <div className="flex items-center gap-2">
                             <span className="tabular text-[13px] font-medium text-ink whitespace-nowrap">
-                              {formatTrustScore(user.trustScore)} / 5.0
+                              {formatTrustScore(user.trustScore)}
                             </span>
-                            <span className="h-1.5 w-20 overflow-hidden rounded-full bg-line">
+                            <span className="h-1.5 w-16 overflow-hidden rounded-full bg-line shrink-0">
                               <span
                                 className={`block h-full rounded-full ${BAR_TONES[band.tone]}`}
                                 style={{ width: `${trustPercent(user.trustScore)}%` }}
                               />
                             </span>
-                            <span className="w-16 text-[12px] text-ink-muted">{band.label}</span>
+                            <span className="truncate text-[12px] text-ink-muted">{band.label}</span>
                           </div>
                         </td>
 
-                        <td className="px-5 py-3.5">
-                          <div className="flex flex-col items-start gap-1.5">
-                            <Badge tone={blocked ? 'critical' : 'success'} withDot>
+                        <td className="min-w-0 overflow-hidden px-5 py-3.5">
+                          <div className="flex flex-col items-start gap-1">
+                            <Badge tone={blocked ? 'critical' : 'success'} withDot className="shrink-0">
                               {blocked ? 'Blocked' : 'Active'}
                             </Badge>
                             {protectedAdmin && (
-                              <Badge tone="brand">
+                              <Badge tone="brand" className="text-[10px] shrink-0">
                                 {isSuper ? 'Super Admin' : 'Admin'}
                               </Badge>
                             )}
                           </div>
                         </td>
 
-                        <td className="px-5 py-3.5">
-                          <div className="flex items-center justify-end gap-2">
+                        <td className="min-w-0 overflow-hidden px-5 py-3.5">
+                          <div className="flex items-center justify-end gap-1.5">
                             <Button
                               variant="outline"
-                              className="h-8 px-2.5 text-[12.5px]"
+                              className="h-8 shrink-0 px-2 text-[12px]"
                               onClick={() => setEditingUser(user)}
                             >
-                              <EditIcon size={14} />
+                              <EditIcon size={13} />
                               Edit
                             </Button>
                             <Button
                               variant={blocked ? 'outline' : 'danger-quiet'}
-                              className="h-8 min-w-[80px] px-2.5 text-[12.5px]"
+                              className="h-8 shrink-0 min-w-[76px] px-2 text-[12px]"
                               disabled={protectedAdmin && !blocked}
                               onClick={() => requestToggle(user)}
                             >
@@ -770,12 +807,12 @@ export function UsersView({
                             </Button>
                             <Button
                               variant="danger-outline"
-                              className="h-8 px-2.5 text-[12.5px] text-critical"
+                              className="h-8 shrink-0 px-2 text-[12px] text-critical"
                               disabled={protectedAdmin}
                               onClick={() => setPendingDelete(user)}
+                              title="Delete user"
                             >
-                              <TrashIcon size={14} />
-                              Delete
+                              <TrashIcon size={13} />
                             </Button>
                           </div>
                         </td>

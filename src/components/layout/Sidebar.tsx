@@ -153,7 +153,8 @@ export function Sidebar({
 
         <div className="mt-auto border-t border-rail-line p-4">
           {(() => {
-            const adminAccount = getAdminAccount(adminEmail)
+            const effectiveEmail = (adminEmail && adminEmail.trim()) || 'martaicampus@gmail.com'
+            const adminAccount = getAdminAccount(effectiveEmail)
             return (
               <div className="rounded-lg bg-white/[0.04] p-3 transition-colors hover:bg-white/[0.07]">
                 <button
@@ -174,14 +175,12 @@ export function Sidebar({
                     </p>
                   </div>
                 </button>
-                {adminEmail && (
-                  <p
-                    className="mt-2 truncate px-1 text-[11.5px] text-rail-muted"
-                    title={adminEmail}
-                  >
-                    {adminEmail}
-                  </p>
-                )}
+                <p
+                  className="mt-2 truncate px-1 text-[11.5px] text-rail-muted"
+                  title={effectiveEmail}
+                >
+                  {effectiveEmail}
+                </p>
                 <button
                   type="button"
                   onClick={onSignOut}

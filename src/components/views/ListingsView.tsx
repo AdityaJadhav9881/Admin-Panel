@@ -397,24 +397,24 @@ export function ListingsView({
           </div>
         ) : (
           <>
-            {/* Mobile: stacked records instead of a compressed table */}
-            <ul className="divide-y divide-line sm:hidden">
+            {/* Mobile: stacked card records instead of a compressed table */}
+            <ul className="divide-y divide-line md:hidden">
               {visible.map((listing) => {
                 const seller = users.find((user) => user.id === listing.sellerId)
                 const deviation = priceDeviation(listing)
                 return (
                   <li
                     key={listing.id}
-                    className={`px-5 py-4 ${listing.status === 'flagged' ? 'bg-critical-soft/40' : ''}`}
+                    className={`p-4 sm:p-5 space-y-3 ${listing.status === 'flagged' ? 'bg-critical-soft/30' : ''}`}
                   >
                     <div className="flex items-start gap-3">
                       <ListingThumb listing={listing} />
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-start justify-between gap-2">
                           <button
                             type="button"
                             onClick={() => setSelectedId(listing.id)}
-                            className="min-w-0 flex-1 text-left text-[13.5px] font-medium text-ink transition-colors hover:text-brand"
+                            className="min-w-0 flex-1 text-left text-[14px] font-semibold text-ink line-clamp-2 transition-colors hover:text-brand"
                           >
                             {listing.title}
                           </button>
@@ -436,14 +436,25 @@ export function ListingsView({
                             </Badge>
                           )}
                         </div>
-                        <p className="mt-0.5 truncate text-[12.5px] text-ink-muted">
-                          {seller?.name ?? 'Unknown seller'} · {categoryLabel[listing.category]}
+
+                        <p className="mt-1 text-[12px] text-ink-muted">
+                          Seller: <span className="font-medium text-ink">{seller?.name ?? 'Unknown seller'}</span>
                         </p>
-                        <p className="mt-1 inline-flex items-center gap-1 rounded-md bg-brand-soft/80 px-2 py-0.5 text-[11px] font-medium text-brand-strong">
-                          {formatCollegeBadge(listing.collegeName, listing.collegeCode)}
-                        </p>
+
+                        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                          <span
+                            className="inline-flex max-w-[210px] truncate items-center gap-1 rounded-md bg-brand-soft px-2 py-0.5 text-[11px] font-medium text-brand-strong"
+                            title={`${listing.collegeName ?? 'GCOE Karad'} · CET ${listing.collegeCode ?? '6004'}`}
+                          >
+                            <span className="truncate">{formatCollegeBadge(listing.collegeName, listing.collegeCode)}</span>
+                          </span>
+                          <span className="rounded bg-surface-2 px-1.5 py-0.5 text-[11px] text-ink-muted">
+                            {categoryLabel[listing.category]}
+                          </span>
+                        </div>
+
                         {(listing.branch || listing.academic_year) && (
-                          <div className="mt-1 flex flex-wrap gap-1">
+                          <div className="mt-1.5 flex flex-wrap gap-1">
                             {listing.branch && (
                               <span className="inline-block rounded bg-surface-2 px-1.5 py-0.5 text-[10.5px] font-medium text-ink-muted">
                                 {listing.branch}
@@ -456,18 +467,23 @@ export function ListingsView({
                             )}
                           </div>
                         )}
-                        <p className="tabular mt-1 text-[12.5px] text-ink-muted">
-                          <span className="font-medium text-ink">{formatMoney(listing.price)}</span>
-                          {' · AI '}
-                          {formatMoney(listing.aiPrice)} ·{' '}
-                          <span className={deviation > 20 || deviation < -20 ? 'text-critical' : ''}>
+
+                        <div className="mt-2 flex items-center justify-between text-[13px]">
+                          <div>
+                            <span className="font-bold text-ink">{formatMoney(listing.price)}</span>
+                            <span className="ml-1.5 text-[11.5px] text-ink-muted">
+                              (AI: {formatMoney(listing.aiPrice)})
+                            </span>
+                          </div>
+                          <Badge tone={deviationTone(deviation)}>
                             {deviation > 0 ? '+' : ''}
                             {deviation}%
-                          </span>
-                        </p>
+                          </Badge>
+                        </div>
                       </div>
                     </div>
-                    <div className="mt-3.5 flex items-center gap-2">
+
+                    <div className="flex items-center gap-2 pt-1 border-t border-line/60">
                       <Button
                         variant="outline"
                         className="flex-1 justify-center h-8.5 text-[12.5px]"
@@ -480,7 +496,7 @@ export function ListingsView({
                         Edit
                       </Button>
                       <Button
-                        className="flex-1 justify-center h-8.5 text-[12.5px]"
+                        className="flex-1 justify-center h-8.5 text-[12.5px] font-medium"
                         onClick={() => {
                           setSelectedId(listing.id)
                           setInspectorMode('view')
@@ -494,8 +510,19 @@ export function ListingsView({
               })}
             </ul>
 
-            <div className="hidden overflow-x-auto sm:block">
-              <table className="w-full min-w-[1040px] border-collapse text-left">
+            {/* Desktop Table with Fixed Column Proportions & Non-Overlapping Cells */}
+            <div className="hidden overflow-x-auto md:block">
+              <table className="w-full min-w-[1080px] table-fixed border-collapse text-left">
+                <colgroup>
+                  <col className="w-[260px]" />
+                  <col className="w-[170px]" />
+                  <col className="w-[185px]" />
+                  <col className="w-[130px]" />
+                  <col className="w-[105px]" />
+                  <col className="w-[125px]" />
+                  <col className="w-[125px]" />
+                  <col className="w-[160px]" />
+                </colgroup>
                 <thead>
                   <tr className="border-b border-line">
                     {['Listing', 'Seller', 'Campus / CET Code', 'Category', 'Listed price', 'AI price', 'Trust flag', ''].map(
@@ -503,7 +530,7 @@ export function ListingsView({
                         <th
                           key={heading || `col-${index}`}
                           scope="col"
-                          className={`px-5 py-3 text-[10.5px] font-semibold tracking-[0.09em] text-ink-faint uppercase ${
+                          className={`px-4 py-3 text-[10.5px] font-semibold tracking-[0.09em] text-ink-faint uppercase ${
                             index === 7 ? 'text-right' : ''
                           }`}
                         >
@@ -527,14 +554,16 @@ export function ListingsView({
                             : 'hover:bg-surface-2'
                         }`}
                       >
-                        <td className="px-5 py-3.5">
+                        {/* Listing Title & ID */}
+                        <td className="px-4 py-3.5 min-w-0 overflow-hidden">
                           <div className="flex items-center gap-3">
                             <ListingThumb listing={listing} />
-                            <div className="min-w-0">
+                            <div className="min-w-0 flex-1">
                               <button
                                 type="button"
                                 onClick={() => setSelectedId(listing.id)}
-                                className="block max-w-[240px] truncate text-left text-[13.5px] font-medium text-ink transition-colors hover:text-brand"
+                                className="block max-w-[200px] truncate text-left text-[13.5px] font-medium text-ink transition-colors hover:text-brand"
+                                title={listing.title}
                               >
                                 {listing.title}
                               </button>
@@ -542,13 +571,15 @@ export function ListingsView({
                             </div>
                           </div>
                         </td>
-                        <td className="px-5 py-3.5">
+
+                        {/* Seller */}
+                        <td className="px-4 py-3.5 min-w-0 overflow-hidden">
                           <div className="flex items-center gap-2.5">
                             <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-brand-soft text-[10.5px] font-semibold text-brand-strong">
                               {seller ? initials(seller.name) : '—'}
                             </span>
-                            <div className="min-w-0">
-                              <p className="truncate text-[13px] font-medium text-ink">
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-[13px] font-medium text-ink" title={seller?.name}>
                                 {seller?.name ?? 'Unknown seller'}
                               </p>
                               <p className="text-[11.5px] text-ink-muted">
@@ -560,24 +591,28 @@ export function ListingsView({
                             </div>
                           </div>
                         </td>
-                        <td className="px-5 py-3.5">
-                          <div className="max-w-[220px]">
+
+                        {/* Campus / CET Code */}
+                        <td className="px-4 py-3.5 min-w-0 overflow-hidden">
+                          <div className="max-w-full overflow-hidden text-ellipsis">
                             <span
-                              className="inline-flex items-center gap-1 rounded-md bg-brand-soft/70 px-2 py-0.5 text-[11.5px] font-medium text-brand-strong"
-                              title={`${listing.collegeName ?? 'GCOE Karad'} · CET ${listing.collegeCode ?? '6004'}`}
+                              className="inline-flex max-w-[175px] truncate items-center gap-1 rounded-md bg-brand-soft/70 px-2 py-0.5 text-[11.5px] font-medium text-brand-strong"
+                              title={`${listing.collegeName ?? 'Government College of Engineering, Karad'} · CET ${listing.collegeCode ?? '6004'}`}
                             >
                               <span className="truncate">{formatCollegeBadge(listing.collegeName, listing.collegeCode)}</span>
                             </span>
                           </div>
                         </td>
-                        <td className="px-5 py-3.5">
-                          <p className="text-[13px] font-medium text-ink">
+
+                        {/* Category & Branch */}
+                        <td className="px-4 py-3.5 min-w-0 overflow-hidden">
+                          <p className="truncate text-[13px] font-medium text-ink">
                             {categoryLabel[listing.category]}
                           </p>
                           {(listing.branch || listing.academic_year) && (
                             <div className="mt-1 flex flex-wrap gap-1">
                               {listing.branch && (
-                                <span className="inline-block rounded bg-surface-2 px-1.5 py-0.5 text-[10.5px] font-medium text-ink-muted">
+                                <span className="inline-block truncate max-w-[110px] rounded bg-surface-2 px-1.5 py-0.5 text-[10.5px] font-medium text-ink-muted" title={listing.branch}>
                                   {listing.branch}
                                 </span>
                               )}
@@ -589,11 +624,15 @@ export function ListingsView({
                             </div>
                           )}
                         </td>
-                        <td className="tabular px-5 py-3.5 text-[13.5px] font-medium text-ink">
+
+                        {/* Listed Price */}
+                        <td className="tabular px-4 py-3.5 text-[13.5px] font-medium text-ink min-w-0 overflow-hidden whitespace-nowrap">
                           {formatMoney(listing.price)}
                         </td>
-                        <td className="px-5 py-3.5">
-                          <div className="flex items-center gap-2">
+
+                        {/* AI Price & Deviation */}
+                        <td className="px-4 py-3.5 min-w-0 overflow-hidden whitespace-nowrap">
+                          <div className="flex items-center gap-1.5">
                             <span className="tabular text-[13px] text-ink-muted">
                               {formatMoney(listing.aiPrice)}
                             </span>
@@ -603,10 +642,12 @@ export function ListingsView({
                             </Badge>
                           </div>
                         </td>
-                        <td className="px-5 py-3.5">
+
+                        {/* Trust Flag */}
+                        <td className="px-4 py-3.5 min-w-0 overflow-hidden">
                           {listing.flag ? (
                             <Badge tone={listing.flag.severity === 'high' ? 'critical' : 'warning'} withDot>
-                              {listing.flag.severity === 'high' ? 'Flagged · High' : 'Flagged · Medium'}
+                              {listing.flag.severity === 'high' ? 'Flag · High' : 'Flag · Med'}
                             </Badge>
                           ) : (
                             <Badge tone="neutral" withDot>
@@ -614,11 +655,13 @@ export function ListingsView({
                             </Badge>
                           )}
                         </td>
-                        <td className="px-5 py-3.5">
-                          <div className="flex items-center justify-end gap-1.5">
+
+                        {/* Action Buttons - Always 100% visible and unclipped */}
+                        <td className="px-4 py-3.5 text-right min-w-[155px] w-[160px] overflow-hidden shrink-0">
+                          <div className="shrink-0 flex items-center justify-end gap-1.5 min-w-[148px]">
                             <Button
                               variant="outline"
-                              className="h-8 px-2.5 text-[12.5px]"
+                              className="h-8 px-2.5 text-[12.5px] shrink-0"
                               aria-label={`Edit ${listing.title}`}
                               onClick={() => {
                                 setSelectedId(listing.id)
@@ -629,7 +672,7 @@ export function ListingsView({
                               Edit
                             </Button>
                             <Button
-                              className="h-8 px-3 text-[12.5px]"
+                              className="h-8 px-3 text-[12.5px] shrink-0 font-medium"
                               aria-label={`Inspect ${listing.title}`}
                               onClick={() => {
                                 setSelectedId(listing.id)

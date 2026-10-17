@@ -140,10 +140,11 @@ export function inferCollege(idOrEmailOrSeed: string): CollegeInfo {
   return MAHARASHTRA_COLLEGES[hash % MAHARASHTRA_COLLEGES.length]
 }
 
-export function formatCollegeBadge(collegeName?: string, collegeCode?: string): string {
-  const name = collegeName || 'GCOE Karad'
-  const code = collegeCode ? ` · CET ${collegeCode}` : ''
-  return `🎓 ${name}${code}`
+export { formatShortCollege, getShortCollegeName } from '../lib/format'
+import { formatCollegeBadge as formatBadgeFn } from '../lib/format'
+
+export function formatCollegeBadge(collegeName?: string | null, collegeCode?: string | null): string {
+  return formatBadgeFn(collegeName, collegeCode)
 }
 
 export interface User {
