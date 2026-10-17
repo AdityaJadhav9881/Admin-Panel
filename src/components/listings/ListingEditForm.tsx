@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { AdminListingUpdatePayload } from '../../api/client'
 import type { Listing, ListingCategory, ListingStatus, User } from '../../data/mock'
-import { MAHARASHTRA_COLLEGES, categoryLabel } from '../../data/mock'
+import { ACADEMIC_BRANCHES, ACADEMIC_YEARS, MAHARASHTRA_COLLEGES, categoryLabel } from '../../data/mock'
 import { CheckIcon, TrashIcon } from '../icons'
 import { Button } from '../ui/Button'
 
@@ -48,6 +48,8 @@ export function ListingEditForm({
   const [aiPrice, setAiPrice] = useState(String(listing.aiPrice))
   const [status, setStatus] = useState<ListingStatus>(listing.status)
   const [sellerId, setSellerId] = useState(listing.sellerId)
+  const [branch, setBranch] = useState<string>(listing.branch ?? 'Computer / IT')
+  const [academicYear, setAcademicYear] = useState<string>(listing.academic_year ?? 'FE')
 
   // College selector
   const initialCollegeMatched = MAHARASHTRA_COLLEGES.find(
@@ -113,6 +115,8 @@ export function ListingEditForm({
       ai_tags: tagsArray,
       ai_condition_notes: aiConditionNotes.trim(),
       seller_id: sellerId,
+      branch: branch.trim(),
+      academic_year: academicYear.trim(),
     }
 
     try {
@@ -255,6 +259,44 @@ export function ListingEditForm({
               {CONDITIONS.map((cond) => (
                 <option key={cond} value={cond}>
                   {cond}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Academic Branch & Year */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label htmlFor="listing-branch" className="block text-[12px] font-medium text-ink-muted">
+              Academic Branch / Discipline
+            </label>
+            <select
+              id="listing-branch"
+              value={branch}
+              onChange={(e) => setBranch(e.target.value)}
+              className="mt-1 h-9 w-full rounded-lg border border-line bg-surface px-2.5 text-[12.5px] text-ink focus:border-brand focus:outline-none"
+            >
+              {ACADEMIC_BRANCHES.map((b) => (
+                <option key={b} value={b}>
+                  {b}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="listing-year" className="block text-[12px] font-medium text-ink-muted">
+              Academic Year
+            </label>
+            <select
+              id="listing-year"
+              value={academicYear}
+              onChange={(e) => setAcademicYear(e.target.value)}
+              className="mt-1 h-9 w-full rounded-lg border border-line bg-surface px-2.5 text-[12.5px] text-ink focus:border-brand focus:outline-none"
+            >
+              {ACADEMIC_YEARS.map((y) => (
+                <option key={y} value={y}>
+                  {y === 'All Years' ? 'All Years (Common)' : `Year: ${y}`}
                 </option>
               ))}
             </select>

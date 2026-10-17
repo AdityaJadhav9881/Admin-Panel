@@ -199,6 +199,17 @@ export function FlagInspector({
                   </Badge>
                 )}
                 <Badge tone="neutral">{categoryLabel[listing.category]}</Badge>
+                {listing.branch && (
+                  <Badge tone="brand">{listing.branch}</Badge>
+                )}
+                {listing.academic_year && (
+                  <Badge tone="neutral">Year: {listing.academic_year}</Badge>
+                )}
+                {listing.collegeName && (
+                  <Badge tone="neutral">
+                    {listing.collegeCode ? `${listing.collegeCode} · ` : ''}{listing.collegeName}
+                  </Badge>
+                )}
               </div>
               <p className="mt-2 text-[12.5px] text-ink-muted">Listed {listing.listed}</p>
             </div>
@@ -402,6 +413,12 @@ export function FlagInspector({
                 value={
                   listing.status === 'flagged' ? 'Flagged for review' : listing.status === 'sold' ? 'Sold' : 'Active'
                 }
+              />
+              <Detail label="Branch" value={listing.branch ?? 'All Branches / Common'} />
+              <Detail label="Academic Year" value={listing.academic_year ?? 'All Years'} />
+              <Detail
+                label="Campus"
+                value={listing.collegeName ? `${listing.collegeName} (CET ${listing.collegeCode ?? '6004'})` : 'Not assigned'}
               />
               <Detail label="Listed on" value={listing.listed} />
             </dl>

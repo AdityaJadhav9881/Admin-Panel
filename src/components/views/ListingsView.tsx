@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react'
 import type { AdminListingUpdatePayload } from '../../api/client'
 import type { Listing, ListingCategory, User } from '../../data/mock'
 import {
+  ACADEMIC_BRANCHES,
+  ACADEMIC_YEARS,
   LISTING_DELETE_TRUST_PENALTY,
   categoryLabel,
   formatCollegeBadge,
@@ -67,6 +69,8 @@ export function ListingsView({
   const [filter, setFilter] = useState<ListingFilter>('all')
   const [categoryFilter, setCategoryFilter] = useState<ListingCategory | 'all'>('all')
   const [collegeFilter, setCollegeFilter] = useState<string>('all')
+  const [branchFilter, setBranchFilter] = useState<string>('all')
+  const [academicYearFilter, setAcademicYearFilter] = useState<string>('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [inspectorMode, setInspectorMode] = useState<'view' | 'edit'>('view')
@@ -100,6 +104,8 @@ export function ListingsView({
     if (filter !== 'all' && filter !== 'flagged' && listing.status !== filter) return false
     if (categoryFilter !== 'all' && listing.category !== categoryFilter) return false
     if (collegeFilter !== 'all' && listing.collegeName !== collegeFilter) return false
+    if (branchFilter !== 'all' && listing.branch !== branchFilter) return false
+    if (academicYearFilter !== 'all' && listing.academic_year !== academicYearFilter) return false
 
     if (normalizedQuery) {
       const seller = users.find((user) => user.id === listing.sellerId)
@@ -110,6 +116,8 @@ export function ListingsView({
       const notes = (listing.aiConditionNotes ?? '').toLowerCase()
       const cName = (listing.collegeName ?? '').toLowerCase()
       const cCode = (listing.collegeCode ?? '').toLowerCase()
+      const branch = (listing.branch ?? '').toLowerCase()
+      const year = (listing.academic_year ?? '').toLowerCase()
       if (
         !title.includes(normalizedQuery) &&
         !sellerName.includes(normalizedQuery) &&
@@ -117,7 +125,9 @@ export function ListingsView({
         !tags.includes(normalizedQuery) &&
         !notes.includes(normalizedQuery) &&
         !cName.includes(normalizedQuery) &&
-        !cCode.includes(normalizedQuery)
+        !cCode.includes(normalizedQuery) &&
+        !branch.includes(normalizedQuery) &&
+        !year.includes(normalizedQuery)
       ) {
         return false
       }
@@ -144,6 +154,8 @@ export function ListingsView({
       'Seller Name',
       'Campus Name',
       'CET Code',
+      'Academic Branch',
+      'Academic Year',
       'Category',
       'Status',
       'Price (INR)',
@@ -166,6 +178,8 @@ export function ListingsView({
         escape(seller?.name ?? l.sellerId),
         escape(l.collegeName ?? 'Government College of Engineering, Karad'),
         escape(l.collegeCode ?? '6004'),
+        escape(l.branch ?? 'All Branches / Common'),
+        escape(l.academic_year ?? 'All Years'),
         escape(categoryLabel[l.category] ?? l.category),
         escape(l.status),
         l.price,
@@ -278,17 +292,49 @@ export function ListingsView({
                   </option>
                 ))}
               </select>
+
+              {/* Branch Filter */}
+              <select
+                value={branchFilter}
+                onChange={(e) => setBranchFilter(e.target.value)}
+                className="h-9 rounded-lg border border-line bg-surface px-2.5 text-[12.5px] text-ink transition-colors hover:border-line-strong focus:border-brand focus:outline-none"
+                aria-label="Filter by branch"
+              >
+                <option value="all">📚 All Branches</option>
+                {ACADEMIC_BRANCHES.map((b) => (
+                  <option key={b} value={b}>
+                    {b}
+                  </option>
+                ))}
+              </select>
+
+              {/* Academic Year Filter */}
+              <select
+                value={academicYearFilter}
+                onChange={(e) => setAcademicYearFilter(e.target.value)}
+                className="h-9 rounded-lg border border-line bg-surface px-2.5 text-[12.5px] text-ink transition-colors hover:border-line-strong focus:border-brand focus:outline-none"
+                aria-label="Filter by academic year"
+              >
+                <option value="all">🏛️ All Years</option>
+                {ACADEMIC_YEARS.map((y) => (
+                  <option key={y} value={y}>
+                    {y === 'All Years' ? 'Common (All Years)' : `Year: ${y}`}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div className="flex items-center gap-2 text-[12px] text-ink-muted">
               <span>Showing {visible.length} of {listings.length} listings</span>
-              {(searchQuery || categoryFilter !== 'all' || collegeFilter !== 'all') && (
+              {(searchQuery || categoryFilter !== 'all' || collegeFilter !== 'all' || branchFilter !== 'all' || academicYearFilter !== 'all') && (
                 <button
                   type="button"
                   onClick={() => {
                     setSearchQuery('')
                     setCategoryFilter('all')
                     setCollegeFilter('all')
+                    setBranchFilter('all')
+                    setAcademicYearFilter('all')
                   }}
                   className="font-medium text-brand hover:underline"
                 >
@@ -393,6 +439,20 @@ export function ListingsView({
                         <p className="mt-1 inline-flex items-center gap-1 rounded-md bg-brand-soft/80 px-2 py-0.5 text-[11px] font-medium text-brand-strong">
                           {formatCollegeBadge(listing.collegeName, listing.collegeCode)}
                         </p>
+                        {(listing.branch || listing.academic_year) && (
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {listing.branch && (
+                              <span className="inline-block rounded bg-surface-2 px-1.5 py-0.5 text-[10.5px] font-medium text-ink-muted">
+                                {listing.branch}
+                              </span>
+                            )}
+                            {listing.academic_year && (
+                              <span className="inline-block rounded bg-brand-soft px-1.5 py-0.5 text-[10.5px] font-medium text-brand-strong">
+                                Year: {listing.academic_year}
+                              </span>
+                            )}
+                          </div>
+                        )}
                         <p className="tabular mt-1 text-[12.5px] text-ink-muted">
                           <span className="font-medium text-ink">{formatMoney(listing.price)}</span>
                           {' · AI '}
@@ -507,8 +567,24 @@ export function ListingsView({
                             </span>
                           </div>
                         </td>
-                        <td className="px-5 py-3.5 text-[13px] text-ink-muted">
-                          {categoryLabel[listing.category]}
+                        <td className="px-5 py-3.5">
+                          <p className="text-[13px] font-medium text-ink">
+                            {categoryLabel[listing.category]}
+                          </p>
+                          {(listing.branch || listing.academic_year) && (
+                            <div className="mt-1 flex flex-wrap gap-1">
+                              {listing.branch && (
+                                <span className="inline-block rounded bg-surface-2 px-1.5 py-0.5 text-[10.5px] font-medium text-ink-muted">
+                                  {listing.branch}
+                                </span>
+                              )}
+                              {listing.academic_year && (
+                                <span className="inline-block rounded bg-brand-soft px-1.5 py-0.5 text-[10.5px] font-medium text-brand-strong">
+                                  {listing.academic_year}
+                                </span>
+                              )}
+                            </div>
+                          )}
                         </td>
                         <td className="tabular px-5 py-3.5 text-[13.5px] font-medium text-ink">
                           {formatMoney(listing.price)}

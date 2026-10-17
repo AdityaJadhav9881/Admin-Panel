@@ -355,3 +355,30 @@ export function EditIcon(props: IconProps) {
   )
 }
 
+export function TargetIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <circle cx="12" cy="12" r="10" />
+      <circle cx="12" cy="12" r="6" />
+      <circle cx="12" cy="12" r="2" />
+    </svg>
+  )
+}
+
+export function MegaphoneIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="m3 11 18-5v12L3 14v-3z" />
+      <path d="M11.6 16.8a3 3 0 1 1-5.8-1.6" />
+    </svg>
+  )
+}
+
+export function SparklesIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="m12 3 1.9 4.8L19 9.5l-4.5 3.3L15.8 18 12 14.8 8.2 18l1.3-5.2L5 9.5l5.1-1.7L12 3z" />
+    </svg>
+  )
+}
+

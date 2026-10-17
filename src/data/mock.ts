@@ -8,10 +8,27 @@
    HTTP round-trip measurements (no placeholder readings).
    ============================================================ */
 
-export type ViewId = 'overview' | 'listings' | 'users' | 'connections' | 'settings'
+export type ViewId = 'overview' | 'listings' | 'users' | 'connections' | 'wanted' | 'settings'
 export type UserStatus = 'active' | 'blocked'
 export type StatusTone = 'success' | 'warning' | 'critical' | 'neutral'
 export type ServiceState = 'operational' | 'degraded' | 'unavailable' | 'pending'
+
+export const ACADEMIC_BRANCHES = [
+  'Computer / IT',
+  'Mechanical',
+  'Civil',
+  'Electrical',
+  'Electronics & Telecommunication (E&TC)',
+  'First Year (Common)',
+  'Chemical',
+  'Other',
+] as const
+
+export type AcademicBranch = (typeof ACADEMIC_BRANCHES)[number]
+
+export const ACADEMIC_YEARS = ['FE', 'SE', 'TE', 'BE', 'All Years'] as const
+
+export type AcademicYear = (typeof ACADEMIC_YEARS)[number]
 
 export interface CollegeInfo {
   name: string
@@ -336,6 +353,8 @@ export interface Listing {
   flag: ListingFlag | null
   collegeName?: string
   collegeCode?: string
+  branch?: string
+  academic_year?: string
 }
 
 /** Trust-score cost applied to the seller when a listing is deleted (0–5 scale). */
@@ -355,3 +374,171 @@ export function priceDeviation(listing: Listing): number {
   if (listing.aiPrice === 0) return 0
   return Math.round(((listing.price - listing.aiPrice) / listing.aiPrice) * 100)
 }
+
+/* ============================================================
+   WANTED BOARD (WANT TO BUY / WTB REQUESTS)
+   ============================================================ */
+
+export type WantedUrgency = 'urgent' | 'moderate' | 'flexible'
+export type WantedMatchStatus = 'matched' | 'searching' | 'fulfilled'
+
+export interface WantedRequest {
+  id: string
+  title: string
+  category: ListingCategory
+  description?: string
+  max_budget: number
+  urgency: WantedUrgency
+  branch?: string
+  academic_year?: string
+  student_id: string
+  student_name: string
+  student_email: string
+  student_phone?: string
+  college_name: string
+  college_code: string
+  match_status: WantedMatchStatus
+  matched_listing_id?: string
+  matched_seller_name?: string
+  created_at: string
+}
+
+export const FALLBACK_WANTED_REQUESTS: WantedRequest[] = [
+  {
+    id: 'wtb-101',
+    title: 'Higher Engineering Mathematics (B.S. Grewal) 44th Edition',
+    category: 'textbooks',
+    description:
+      'Looking for a clean copy of BS Grewal with unmarked integration & differential equations chapters for Semester 3 math exam.',
+    max_budget: 450,
+    urgency: 'urgent',
+    branch: 'Computer / IT',
+    academic_year: 'SE',
+    student_id: 'usr-101',
+    student_name: 'Aditya Patil',
+    student_email: 'aditya.patil@gcekarad.ac.in',
+    student_phone: '+91 98221 04928',
+    college_name: 'Government College of Engineering, Karad',
+    college_code: '6004',
+    match_status: 'searching',
+    created_at: '2 hours ago',
+  },
+  {
+    id: 'wtb-102',
+    title: 'Mini Drafter with Metal Clamp + Engineering Drawing Compass',
+    category: 'supplies',
+    description:
+      'First year engineering graphics assignment due this Friday. Need a sturdy Omega/Rolson mini drafter in good working condition.',
+    max_budget: 350,
+    urgency: 'urgent',
+    branch: 'First Year (Common)',
+    academic_year: 'FE',
+    student_id: 'usr-104',
+    student_name: 'Tanvi Joshi',
+    student_email: 'tanvi.joshi@dacoe.ac.in',
+    student_phone: '+91 94210 88312',
+    college_name: 'Dr. Daulatrao Aher College of Engineering, Karad',
+    college_code: '6545',
+    match_status: 'matched',
+    matched_listing_id: 'prod-004',
+    matched_seller_name: 'Omkar Salunkhe',
+    created_at: '5 hours ago',
+  },
+  {
+    id: 'wtb-103',
+    title: 'Casio fx-991EX ClassWiz or fx-991CW Scientific Calculator',
+    category: 'electronics',
+    description:
+      'Must have matrix, equation solver, and QR features allowed in SPPU / Shivaji University exam hall.',
+    max_budget: 850,
+    urgency: 'urgent',
+    branch: 'Mechanical',
+    academic_year: 'TE',
+    student_id: 'usr-107',
+    student_name: 'Rohit Shinde',
+    student_email: 'rohit.s@coep.ac.in',
+    student_phone: '+91 97654 32109',
+    college_name: 'COEP Technological University, Pune',
+    college_code: '6006',
+    match_status: 'matched',
+    matched_listing_id: 'prod-001',
+    matched_seller_name: 'Sanket Deshmukh',
+    created_at: 'Yesterday',
+  },
+  {
+    id: 'wtb-104',
+    title: 'Hero / Montra Geared Bicycle for Campus Commute',
+    category: 'transport',
+    description:
+      'Need a reliable 21-speed hybrid/MTB cycle for daily travel between Sangli city hostel and WCE college gate.',
+    max_budget: 3500,
+    urgency: 'moderate',
+    branch: 'Civil',
+    academic_year: 'BE',
+    student_id: 'usr-109',
+    student_name: 'Prathamesh Kulkarni',
+    student_email: 'prathamesh.k@walchandsangli.ac.in',
+    student_phone: '+91 99230 45678',
+    college_name: 'Walchand College of Engineering, Sangli',
+    college_code: '6007',
+    match_status: 'searching',
+    created_at: '2 days ago',
+  },
+  {
+    id: 'wtb-105',
+    title: 'Official Navy Blue Workshop Apron + Safety Gloves (Size L)',
+    category: 'supplies',
+    description:
+      'Required for central workshop lathe machine & carpentry session. Official RIT logo preferred.',
+    max_budget: 250,
+    urgency: 'moderate',
+    branch: 'Mechanical',
+    academic_year: 'FE',
+    student_id: 'usr-113',
+    student_name: 'Pooja Kadam',
+    student_email: 'pooja.kadam@ritindia.edu',
+    student_phone: '+91 91580 12345',
+    college_name: 'Rajarambapu Institute of Technology, Islampur',
+    college_code: '6214',
+    match_status: 'fulfilled',
+    created_at: '3 days ago',
+  },
+  {
+    id: 'wtb-106',
+    title: 'Operating Systems Concepts (Galvin) & Computer Networks (Tanenbaum)',
+    category: 'textbooks',
+    description:
+      'Looking for 9th or 10th edition for GATE / semester exam preparation in PICT hostel.',
+    max_budget: 600,
+    urgency: 'flexible',
+    branch: 'Computer / IT',
+    academic_year: 'TE',
+    student_id: 'usr-111',
+    student_name: 'Snehal More',
+    student_email: 'snehal.more@pict.edu',
+    student_phone: '+91 98901 23456',
+    college_name: 'Pune Institute of Computer Technology, Pune',
+    college_code: '6271',
+    match_status: 'searching',
+    created_at: '4 days ago',
+  },
+  {
+    id: 'wtb-107',
+    title: 'Foldable Wooden Study Desk or Bedside Laptop Stand',
+    category: 'furniture',
+    description:
+      'Compact study table suitable for 3-sharing hostel room in AISSMS campus.',
+    max_budget: 800,
+    urgency: 'flexible',
+    branch: 'Electronics & Telecommunication (E&TC)',
+    academic_year: 'SE',
+    student_id: 'usr-105',
+    student_name: 'Kunal Jadhav',
+    student_email: 'kunal.j@aissmsioit.org',
+    student_phone: '+91 96041 67890',
+    college_name: 'AISSMS Institute of Information Technology, Pune',
+    college_code: '6282',
+    match_status: 'searching',
+    created_at: '5 days ago',
+  },
+]

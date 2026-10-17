@@ -34,8 +34,11 @@ import type {
   OverviewMetrics,
   User,
   UserStatus,
+  WantedMatchStatus,
+  WantedRequest,
+  WantedUrgency,
 } from '../data/mock'
-import { AGENT_CATALOG, inferCollege } from '../data/mock'
+import { AGENT_CATALOG, FALLBACK_WANTED_REQUESTS, inferCollege } from '../data/mock'
 import { formatDate } from '../lib/format'
 
 export const API_BASE_URL: string =
@@ -65,6 +68,7 @@ export const endpoints = {
   communications: '/admin/communications',
   transactions: '/admin/transactions',
   messages: '/admin/messages',
+  wanted: '/wanted',
 } as const
 
 export class ApiError extends Error {
@@ -579,6 +583,8 @@ export interface WireListing {
   suggested_price: number
   status: string
   trust_reason?: string | null
+  branch?: string | null
+  academic_year?: string | null
   created_at: string
 }
 
@@ -665,6 +671,8 @@ export interface AdminListingUpdatePayload {
   ai_tags?: string | string[]
   ai_condition_notes?: string
   seller_id?: string
+  branch?: string
+  academic_year?: string
 }
 
 export interface AdminOrderUpdatePayload {
@@ -673,6 +681,24 @@ export interface AdminOrderUpdatePayload {
   payment_method?: 'cash_on_meetup' | 'gpay_upi'
   order_status?: string
   final_price?: number
+}
+
+export interface AdminWantedUpdatePayload {
+  title?: string
+  description?: string
+  category?: ListingCategory | string
+  max_budget?: number
+  urgency?: WantedUrgency
+  branch?: string
+  academic_year?: string
+  student_name?: string
+  student_email?: string
+  student_phone?: string
+  college_name?: string
+  college_code?: string
+  match_status?: WantedMatchStatus
+  matched_listing_id?: string
+  matched_seller_name?: string
 }
 
 export interface WireAgent {
@@ -1096,6 +1122,8 @@ export function adaptListing(wire: WireListing): Listing {
       : null,
     collegeName,
     collegeCode,
+    branch: firstNonEmpty(wire.branch) ?? undefined,
+    academic_year: firstNonEmpty(wire.academic_year) ?? undefined,
   }
 }
 
@@ -1268,6 +1296,8 @@ export const ADMIN_ORDER_OVERRIDES_KEY = 'campusmart_admin_order_overrides'
 export const ADMIN_DELETED_MESSAGES_KEY = 'campusmart_admin_deleted_messages'
 export const ADMIN_INTERVENTIONS_KEY = 'campusmart_admin_interventions'
 export const ADMIN_DELETED_USERS_KEY = 'campusmart_admin_deleted_users'
+export const ADMIN_WANTED_OVERRIDES_KEY = 'campusmart_admin_wanted_overrides'
+export const ADMIN_DELETED_WANTED_KEY = 'campusmart_admin_deleted_wanted'
 
 export function getLocalStore<T>(key: string, fallback: T): T {
   try {
@@ -1350,6 +1380,8 @@ export async function fetchListings(): Promise<Listing[]> {
       aiTags: ov.ai_tags !== undefined ? (Array.isArray(ov.ai_tags) ? ov.ai_tags.join(', ') : ov.ai_tags) : l.aiTags,
       aiConditionNotes: ov.ai_condition_notes !== undefined ? ov.ai_condition_notes : l.aiConditionNotes,
       sellerId: ov.seller_id !== undefined ? ov.seller_id : l.sellerId,
+      branch: ov.branch !== undefined ? ov.branch : l.branch,
+      academic_year: ov.academic_year !== undefined ? ov.academic_year : l.academic_year,
     }
   })
 }
@@ -2091,6 +2123,110 @@ export async function sendAdminInterventionNote(threadId: string, noteText: stri
   }
 
   return newMsg
+}
+
+/* --- Wanted Board (WTB) Operations --------------------------- */
+
+export async function fetchWantedRequests(): Promise<WantedRequest[]> {
+  let list: WantedRequest[] = []
+  try {
+    const payload = await api.get<unknown>(endpoints.wanted)
+    if (Array.isArray(payload) && payload.length > 0) {
+      list = (payload as Record<string, unknown>[]).map((w) => ({
+        id: String(w.id ?? `wtb-${Date.now()}`),
+        title: String(w.title || 'Wanted Item'),
+        category: (w.category as ListingCategory) || 'other',
+        description: typeof w.description === 'string' ? w.description : undefined,
+        max_budget: Number(w.max_budget) || 0,
+        urgency: (w.urgency as WantedUrgency) || 'moderate',
+        branch: typeof w.branch === 'string' ? w.branch : undefined,
+        academic_year: typeof w.academic_year === 'string' ? w.academic_year : undefined,
+        student_id: String(w.student_id ?? w.user_id ?? 'usr-anon'),
+        student_name: String(w.student_name ?? w.user_name ?? 'Campus Student'),
+        student_email: String(w.student_email ?? w.email ?? 'student@campus.ac.in'),
+        student_phone: typeof w.student_phone === 'string' ? w.student_phone : typeof w.phone === 'string' ? w.phone : undefined,
+        college_name: String(w.college_name ?? w.college ?? 'Government College of Engineering, Karad'),
+        college_code: String(w.college_code ?? '6004'),
+        match_status: (w.match_status as WantedMatchStatus) || (w.matched_listing_id ? 'matched' : 'searching'),
+        matched_listing_id: typeof w.matched_listing_id === 'string' ? w.matched_listing_id : undefined,
+        matched_seller_name: typeof w.matched_seller_name === 'string' ? w.matched_seller_name : undefined,
+        created_at: typeof w.created_at === 'string' ? formatDate(w.created_at) : 'Recently',
+      }))
+    } else {
+      list = [...FALLBACK_WANTED_REQUESTS]
+    }
+  } catch {
+    list = [...FALLBACK_WANTED_REQUESTS]
+  }
+
+  const deletedIds = new Set(getLocalStore<string[]>(ADMIN_DELETED_WANTED_KEY, []))
+  const overrides = getLocalStore<Record<string, AdminWantedUpdatePayload>>(ADMIN_WANTED_OVERRIDES_KEY, {})
+
+  return list
+    .filter((w) => !deletedIds.has(w.id))
+    .map((w) => {
+      const ov = overrides[w.id]
+      if (!ov) return w
+      return {
+        ...w,
+        title: ov.title !== undefined ? ov.title : w.title,
+        description: ov.description !== undefined ? ov.description : w.description,
+        category: (ov.category as ListingCategory) || w.category,
+        max_budget: typeof ov.max_budget === 'number' ? ov.max_budget : w.max_budget,
+        urgency: ov.urgency !== undefined ? ov.urgency : w.urgency,
+        branch: ov.branch !== undefined ? ov.branch : w.branch,
+        academic_year: ov.academic_year !== undefined ? ov.academic_year : w.academic_year,
+        student_name: ov.student_name !== undefined ? ov.student_name : w.student_name,
+        student_email: ov.student_email !== undefined ? ov.student_email : w.student_email,
+        student_phone: ov.student_phone !== undefined ? ov.student_phone : w.student_phone,
+        college_name: ov.college_name !== undefined ? ov.college_name : w.college_name,
+        college_code: ov.college_code !== undefined ? ov.college_code : w.college_code,
+        match_status: ov.match_status !== undefined ? ov.match_status : w.match_status,
+        matched_listing_id: ov.matched_listing_id !== undefined ? ov.matched_listing_id : w.matched_listing_id,
+        matched_seller_name: ov.matched_seller_name !== undefined ? ov.matched_seller_name : w.matched_seller_name,
+      }
+    })
+}
+
+export async function updateAdminWantedRequest(id: string, payload: AdminWantedUpdatePayload): Promise<void> {
+  const overrides = getLocalStore<Record<string, AdminWantedUpdatePayload>>(ADMIN_WANTED_OVERRIDES_KEY, {})
+  overrides[id] = { ...(overrides[id] ?? {}), ...payload }
+  setLocalStore(ADMIN_WANTED_OVERRIDES_KEY, overrides)
+
+  try {
+    await api.patch(`${endpoints.wanted}/${encodeURIComponent(id)}`, payload)
+  } catch {
+    /* local fallback */
+  }
+}
+
+export async function deleteAdminWantedRequest(id: string): Promise<void> {
+  const deleted = getLocalStore<string[]>(ADMIN_DELETED_WANTED_KEY, [])
+  if (!deleted.includes(id)) {
+    deleted.push(id)
+    setLocalStore(ADMIN_DELETED_WANTED_KEY, deleted)
+  }
+  const overrides = getLocalStore<Record<string, unknown>>(ADMIN_WANTED_OVERRIDES_KEY, {})
+  delete overrides[id]
+  setLocalStore(ADMIN_WANTED_OVERRIDES_KEY, overrides)
+
+  try {
+    await api.remove(`${endpoints.wanted}/${encodeURIComponent(id)}`)
+  } catch {
+    /* local fallback */
+  }
+}
+
+export async function fulfillAdminWantedRequest(id: string): Promise<void> {
+  await updateAdminWantedRequest(id, { match_status: 'fulfilled' })
+}
+
+export async function matchWantedWithSeller(wantedId: string, listingId: string, sellerName: string): Promise<void> {
+  await updateAdminWantedRequest(wantedId, {
+    match_status: 'matched',
+    matched_listing_id: listingId,
+    matched_seller_name: sellerName,
+  })
 }
 
 export async function approveListing(productId: string): Promise<void> {

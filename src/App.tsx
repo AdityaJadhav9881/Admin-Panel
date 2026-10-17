@@ -24,10 +24,15 @@ import {
   updateAdminOrder,
   deleteAdminChatMessage,
   sendAdminInterventionNote,
+  fetchWantedRequests,
+  updateAdminWantedRequest,
+  deleteAdminWantedRequest,
+  matchWantedWithSeller,
   type AdminListingUpdatePayload,
   type AdminOrderUpdatePayload,
   type AdminSession,
   type AdminUserUpdatePayload,
+  type AdminWantedUpdatePayload,
   type ConnectionThread,
   type LoginProgress,
 } from './api/client'
@@ -44,6 +49,7 @@ import { ListingsView } from './components/views/ListingsView'
 import { OverviewView } from './components/views/OverviewView'
 import { SettingsView } from './components/views/SettingsView'
 import { UsersView, type UserFilter } from './components/views/UsersView'
+import { WantedRequestsView } from './components/views/WantedRequestsView'
 import {
   SERVICE_CATALOG,
   issueServiceCount,
@@ -59,6 +65,7 @@ import {
   type User,
   type UserStatus,
   type ViewId,
+  type WantedRequest,
 } from './data/mock'
 
 const VIEW_META: Record<ViewId, { title: string; subtitle: string }> = {
@@ -69,6 +76,10 @@ const VIEW_META: Record<ViewId, { title: string; subtitle: string }> = {
   listings: {
     title: 'Listings & Moderation',
     subtitle: 'AI-flagged listings, pricing checks and seller actions',
+  },
+  wanted: {
+    title: 'Wanted Board (WTB)',
+    subtitle: 'Campus student requests, max budgets, urgency, and seller matching',
   },
   users: {
     title: 'User management',
@@ -91,6 +102,7 @@ function getViewFromHash(): ViewId {
   if (
     hash === 'overview' ||
     hash === 'listings' ||
+    hash === 'wanted' ||
     hash === 'users' ||
     hash === 'connections' ||
     hash === 'settings'
@@ -134,6 +146,7 @@ export default function App() {
   const [queue, setQueue] = useState<FlaggedTransaction[]>([])
   const [agents, setAgents] = useState<Agent[]>([])
   const [connections, setConnections] = useState<ConnectionThread[]>([])
+  const [wantedRequests, setWantedRequests] = useState<WantedRequest[]>([])
   const [metrics, setMetrics] = useState<OverviewMetrics>(EMPTY_METRICS)
   /* Live probe rows — every state/latency is a real HTTP measurement. */
   const [services, setServices] = useState<Service[]>(SERVICE_CATALOG)
@@ -192,12 +205,13 @@ export default function App() {
       warmTimer.current = window.setTimeout(() => setWarming(true), WARM_NOTICE_MS)
 
       try {
-        const [overview, liveUsers, liveListings, liveAgents, liveConnections] = await Promise.all([
+        const [overview, liveUsers, liveListings, liveAgents, liveConnections, liveWanted] = await Promise.all([
           fetchOverview(),
           fetchUsers(),
           fetchListings(),
           fetchAgents(),
           fetchCommunications(),
+          fetchWantedRequests(),
         ])
         if (seq !== loadSeq.current) return
 
@@ -212,6 +226,7 @@ export default function App() {
         setListings(liveListings)
         setAgents(liveAgents)
         setConnections(liveConnections)
+        setWantedRequests(liveWanted)
         setBackendConnected(true)
         setLoadError(null)
         showToast('Live data loaded from the CampusMart API.', 'success')
@@ -573,6 +588,8 @@ export default function App() {
             aiTags: Array.isArray(payload.ai_tags) ? payload.ai_tags.join(', ') : (payload.ai_tags ?? l.aiTags),
             aiConditionNotes: payload.ai_condition_notes ?? l.aiConditionNotes,
             sellerId: payload.seller_id ?? l.sellerId,
+            branch: payload.branch ?? l.branch,
+            academic_year: payload.academic_year ?? l.academic_year,
             flag: payload.status === 'flagged' ? l.flag : null,
           }
         }),
@@ -668,6 +685,79 @@ export default function App() {
     })
   }
 
+  /* --- Wanted Board (WTB) Handlers --------------------------- */
+  const handleUpdateWantedRequest = (id: string, payload: AdminWantedUpdatePayload) => {
+    void withMutation(async () => {
+      await updateAdminWantedRequest(id, payload)
+      setWantedRequests((prev) =>
+        prev.map((r) => {
+          if (r.id !== id) return r
+          return {
+            ...r,
+            title: payload.title ?? r.title,
+            description: payload.description !== undefined ? payload.description : r.description,
+            category: (payload.category as ListingCategory) ?? r.category,
+            max_budget: payload.max_budget ?? r.max_budget,
+            urgency: payload.urgency ?? r.urgency,
+            branch: payload.branch ?? r.branch,
+            academic_year: payload.academic_year ?? r.academic_year,
+            match_status: payload.match_status ?? r.match_status,
+            student_name: payload.student_name ?? r.student_name,
+            student_email: payload.student_email ?? r.student_email,
+            student_phone: payload.student_phone !== undefined ? payload.student_phone : r.student_phone,
+            college_name: payload.college_name ?? r.college_name,
+            college_code: payload.college_code ?? r.college_code,
+            matched_listing_id: payload.matched_listing_id ?? r.matched_listing_id,
+            matched_seller_name: payload.matched_seller_name ?? r.matched_seller_name,
+          }
+        }),
+      )
+      showToast('Wanted request updated successfully.', 'success')
+    })
+  }
+
+  const handleDeleteWantedRequest = (id: string) => {
+    void withMutation(async () => {
+      await deleteAdminWantedRequest(id)
+      setWantedRequests((prev) => prev.filter((r) => r.id !== id))
+      showToast('Wanted request deleted.', 'warning')
+    })
+  }
+
+  const handleFulfillWantedRequest = (id: string) => {
+    void withMutation(async () => {
+      const existing = wantedRequests.find((r) => r.id === id)
+      const nextStatus = existing?.match_status === 'fulfilled' ? 'searching' : 'fulfilled'
+      await updateAdminWantedRequest(id, { match_status: nextStatus })
+      setWantedRequests((prev) =>
+        prev.map((r) => (r.id === id ? { ...r, match_status: nextStatus } : r)),
+      )
+      showToast(
+        nextStatus === 'fulfilled' ? 'Request marked as fulfilled.' : 'Request reopened for searching.',
+        'success',
+      )
+    })
+  }
+
+  const handleMatchWantedSeller = (wantedId: string, listingId: string, sellerName: string) => {
+    void withMutation(async () => {
+      await matchWantedWithSeller(wantedId, listingId, sellerName)
+      setWantedRequests((prev) =>
+        prev.map((r) =>
+          r.id === wantedId
+            ? {
+                ...r,
+                match_status: 'matched',
+                matched_listing_id: listingId,
+                matched_seller_name: sellerName,
+              }
+            : r,
+        ),
+      )
+      showToast(`Linked with seller ${sellerName}.`, 'success')
+    })
+  }
+
   /* --- Derived state ---------------------------------------- */
   const flaggedListings = listings.filter((listing) => listing.status === 'flagged').length
   const pausedAgents = agents.filter((agent) => !agent.enabled).length
@@ -711,6 +801,7 @@ export default function App() {
         flaggedListings={flaggedListings}
         pausedAgents={pausedAgents}
         connectionsCount={connections.length}
+        wantedCount={wantedRequests.filter((r) => r.urgency === 'urgent' && r.match_status !== 'fulfilled').length}
         backend={backend}
         adminEmail={session.email}
         onSignOut={handleSignOut}
@@ -808,6 +899,19 @@ export default function App() {
                   onBanSeller={banSeller}
                   onOpenSeller={openSellerInUsers}
                   onUpdateListing={handleUpdateListing}
+                />
+              )}
+
+              {view === 'wanted' && (
+                <WantedRequestsView
+                  key="wanted"
+                  requests={wantedRequests}
+                  listings={listings}
+                  users={users}
+                  onUpdate={handleUpdateWantedRequest}
+                  onDelete={handleDeleteWantedRequest}
+                  onFulfill={handleFulfillWantedRequest}
+                  onMatchSeller={handleMatchWantedSeller}
                 />
               )}
 

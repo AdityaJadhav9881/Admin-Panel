@@ -1,6 +1,6 @@
 # HANDOFF — CampusMart AI Master Control (context for next session)
 
-_Last updated: 2026-10-17 (post-implementation of God-Mode Administrative Edit & Override Controls across Users, Listings, Orders, and Chat Transcripts). Read this file first in a new session; it is the authoritative, full state snapshot._
+_Last updated: 2026-10-17 (post-implementation of Wanted Board (WTB) Request Management, Seller Matching, and Academic Branch/Year Moderation). Read this file first in a new session; it is the authoritative, full state snapshot._
 
 ## 1. Project
 
@@ -20,7 +20,8 @@ _Last updated: 2026-10-17 (post-implementation of God-Mode Administrative Edit &
   - `f2a6a05` Add permanent user deletion option alongside block/unblock
   - `468e21a` Multi-Key AI Hydra Load Balancer & Failover Pool engine (5–10 key slots, smart speed failover, auto-cooldown circuit breaker)
   - `87f61e4` Add College Grouping, CET Cell Badges, and Connections & Communications Intelligence Panel
-  - `[current]` God-Mode Administrative Edit & Override Capabilities (Users, Listings, Orders, and Chat Transcripts)
+  - `8c77526` God-Mode Administrative Edit & Override Capabilities (Users, Listings, Orders, and Chat Transcripts)
+  - `[current]` Manage "Want to Buy" (WTB) Board, Seller Matching Engine, and Academic Branch/Year Moderation
 - **Stack**: React 19 + TypeScript ~6.0 + Vite 8 + Tailwind v4 (`@tailwindcss/vite`), linting via `oxlint` (`.oxlintrc.json`: `react/rules-of-hooks: error`, `react/only-export-components: warn`).
 - **tsconfig constraints**: `noUnusedLocals`, `noUnusedParameters`, `erasableSyntaxOnly` (no constructor parameter properties), `"types": ["vite/client"]`.
 - **Reference docs**: two philosophy `.txt` files in the project root (INFINITY DESIGN). Key principles applied throughout: neutral foundation, controlled accent, semantic color, progressive disclosure, no dead ends, honest data labelling (placeholder values are always labelled as such).
@@ -90,10 +91,11 @@ npm run dev         # vite dev server
 | `src/components/layout/Sidebar.tsx` | Dark rail nav with badged counts (incl. `connectionsCount`), footer admin card with credentials role info, live backend status dot, and clickable support link (`mailto:martaicampus@gmail.com`) |
 | `src/components/layout/Topbar.tsx` | App header with dynamic title/subtitle, live API indicator chip, refresh button, and profile deep-link |
 | `src/components/views/OverviewView.tsx` | Key metrics cards, flagged transactions review queue, **Top Active Campuses (CET Cell Network)** panel with distribution progress bars, **Marketplace Value Summary** panel (total listed GMV in ₹, avg AI fair value in ₹, category distribution), and live system health probes |
-| `src/components/views/ListingsView.tsx` | Moderation table: status tabs (All, Flagged, Active, Sold), multi-field search bar, campus filter, category pills, `Campus / CET Code` column, **Export CSV**, and `Edit` button on every listing opening inspector in God-mode edit tab |
-| `src/components/listings/FlagInspector.tsx` | Right drawer modal: dual-mode tab switcher (`Details & AI Inspection` vs `✏️ Edit Listing`), 4-photo gallery with **interactive zoom lightbox**, and mounts `ListingEditForm` |
-| `src/components/listings/ListingEditForm.tsx` | **God-Mode Listing Editor**: overrides Title, Description, Listed Price (`₹`), AI Fair Value (`₹`), Category, Condition Grade, Campus (CET Cell picker or custom), Status, AI Tags, AI Condition Notes, and Seller Reassignment |
+| `src/components/views/ListingsView.tsx` | Moderation table: status tabs (All, Flagged, Active, Sold), multi-field search bar, campus filter, **Academic Branch filter (`Computer / IT`, `Mechanical`, etc.)**, **Academic Year filter (`FE`, `SE`, `TE`, `BE`, `All Years`)**, category pills, `Campus / CET Code` column, **Export CSV (with Branch & Year columns)**, and `Edit` button on every listing opening inspector in God-mode edit tab |
+| `src/components/listings/FlagInspector.tsx` | Right drawer modal: dual-mode tab switcher (`Details & AI Inspection` vs `✏️ Edit Listing`), branch & year badges, campus pill, 4-photo gallery with **interactive zoom lightbox**, and mounts `ListingEditForm` |
+| `src/components/listings/ListingEditForm.tsx` | **God-Mode Listing Editor**: overrides Title, Description, Listed Price (`₹`), AI Fair Value (`₹`), Category, Condition Grade, **Academic Branch & Year**, Campus (CET Cell picker or custom), Status, AI Tags, AI Condition Notes, and Seller Reassignment |
 | `src/components/listings/ListingThumb.tsx` | Category-tinted tile or dashed "No image" fallback; sizes sm/lg |
+| `src/components/views/WantedRequestsView.tsx` | **Campus Wanted Board (WTB) Operations Center**: Network metric cards (Total Requests, Urgent <24h, Matched with Seller, Fulfilled), multi-field search, Urgency pills, Match Status filters, Campus/Branch/Year dropdowns, **"Match with Seller" Modal** linking buyers to active listings, **"Edit Wanted Request" Slide-Over Drawer**, Fulfill toggle, Delete confirmation, and CSV Export |
 | `src/components/views/UsersView.tsx` | User directory: view mode toggle (`All Users Table` vs `🎓 Grouped by College`), bulk reassign campus bar with checkboxes, college filter dropdown, college hub accordion cards, `Edit` button on every user row/card opening `UserEditDrawer` |
 | `src/components/users/UserEditDrawer.tsx` | **Slide-Over God-Mode Student Editor**: Full Name, Email, Phone, Searchable CET Cell & All-India College Picker + Custom Override, "Also update college on all active listings by this student" checkbox, Trust score slider/input (`0.0–5.0`), Status toggle (`Active` | `Blocked`), Admin Password Reset with eye toggle, and Danger Zone permanent delete |
 | `src/components/views/ConnectionsView.tsx` | **Connections & Communications Intelligence Panel ("Who is in touch with whom")**: Top Network Metrics Bar, Interactive Connection Matrix, Order Handshake Editor (`OrderEditInlineForm` for final price, address, phone, payment method, order status), individual chat message deletion, and Official Admin Intervention Note input |

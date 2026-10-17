@@ -5,6 +5,7 @@ import {
   AgentsIcon,
   ChatIcon,
   CloseIcon,
+  MegaphoneIcon,
   OverviewIcon,
   ShieldIcon,
   SignOutIcon,
@@ -21,6 +22,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { id: 'overview', label: 'Overview', icon: OverviewIcon },
   { id: 'listings', label: 'Listings & Moderation', icon: TagIcon },
+  { id: 'wanted', label: 'Wanted Board (WTB)', icon: MegaphoneIcon },
   { id: 'users', label: 'Users & Campuses', icon: UsersIcon },
   { id: 'connections', label: 'Connections & Chats', icon: ChatIcon },
   { id: 'settings', label: 'Settings & Profile', icon: AgentsIcon },
@@ -35,6 +37,7 @@ interface SidebarProps {
   flaggedListings: number
   pausedAgents: number
   connectionsCount?: number
+  wantedCount?: number
   backend: { connected: boolean; label: string }
   adminEmail: string
   onSignOut: () => void
@@ -49,6 +52,7 @@ export function Sidebar({
   flaggedListings,
   pausedAgents,
   connectionsCount,
+  wantedCount,
   backend,
   adminEmail,
   onSignOut,
@@ -57,6 +61,10 @@ export function Sidebar({
     overview: flaggedCount > 0 ? { count: flaggedCount, className: 'bg-critical-soft text-critical' } : undefined,
     listings:
       flaggedListings > 0 ? { count: flaggedListings, className: 'bg-critical-soft text-critical' } : undefined,
+    wanted:
+      wantedCount && wantedCount > 0
+        ? { count: wantedCount, className: 'bg-amber-500/20 text-amber-300' }
+        : undefined,
     connections:
       connectionsCount && connectionsCount > 0
         ? { count: connectionsCount, className: 'bg-brand-soft text-brand-strong' }
