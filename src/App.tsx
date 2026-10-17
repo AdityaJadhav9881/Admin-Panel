@@ -11,7 +11,6 @@ import {
   fetchOverview,
   fetchUsers,
   isProtectedAdminEmail,
-  isSuperAdminEmail,
   loginAdmin,
   persistAdminSession,
   readAdminSession,
@@ -40,7 +39,7 @@ import { probeImageSamples, runHealthProbes } from './api/health'
 import { LoginView } from './components/auth/LoginView'
 import { Sidebar } from './components/layout/Sidebar'
 import { Topbar } from './components/layout/Topbar'
-import { AlertIcon, RefreshIcon } from './components/icons'
+import { AlertIcon, CloseIcon, RefreshIcon } from './components/icons'
 import { Button } from './components/ui/Button'
 import { ConnectingBox } from './components/ui/ConnectingBox'
 import { Toast, type ToastMessage } from './components/ui/Toast'
@@ -130,6 +129,7 @@ export default function App() {
   /* --- View state with URL route syncing -------------------- */
   const [view, setView] = useState<ViewId>(() => getViewFromHash())
   const [navOpen, setNavOpen] = useState(false)
+  const [shortcutsHelpOpen, setShortcutsHelpOpen] = useState(false)
 
   useEffect(() => {
     const handleHashChange = () => {
@@ -335,6 +335,7 @@ export default function App() {
     setQueue([])
     setAgents([])
     setConnections([])
+    setWantedRequests([])
     setMetrics(EMPTY_METRICS)
     setUserQuery('')
     setUserFilter('all')
@@ -352,12 +353,82 @@ export default function App() {
     setProbing(false)
   }, [])
 
-  const navigate = (next: ViewId) => {
+  const navigate = useCallback((next: ViewId) => {
     setView(next)
     setNavOpen(false)
     window.location.hash = `#/${next}`
     window.scrollTo({ top: 0 })
-  }
+  }, [])
+
+  /* --- Global Keyboard Shortcuts & Command Center ---------- */
+  useEffect(() => {
+    if (!session) return
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null
+      const isInput =
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable)
+
+      if (e.key === 'Escape') {
+        if (shortcutsHelpOpen) {
+          setShortcutsHelpOpen(false)
+          return
+        }
+        if (navOpen) {
+          setNavOpen(false)
+          return
+        }
+        if (isInput && target) {
+          target.blur()
+          return
+        }
+      }
+
+      // Quick search focus with "/" (when not typing) or Cmd+K / Ctrl+K
+      if ((e.key === 'k' && (e.metaKey || e.ctrlKey)) || (!isInput && e.key === '/')) {
+        e.preventDefault()
+        const searchInput = document.querySelector<HTMLInputElement>('input[data-search-input="true"]')
+        if (searchInput) {
+          searchInput.focus()
+          searchInput.select()
+        }
+        return
+      }
+
+      // Single-key hotkeys (disabled when typing or holding modifier keys)
+      if (isInput || e.metaKey || e.ctrlKey || e.altKey) return
+
+      if (e.key === '?' || (e.key === '/' && e.shiftKey)) {
+        e.preventDefault()
+        setShortcutsHelpOpen((prev) => !prev)
+        return
+      }
+
+      if (e.key === '1') {
+        navigate('overview')
+      } else if (e.key === '2') {
+        navigate('listings')
+      } else if (e.key === '3') {
+        navigate('wanted')
+      } else if (e.key === '4') {
+        navigate('users')
+      } else if (e.key === '5') {
+        navigate('connections')
+      } else if (e.key === '6') {
+        navigate('settings')
+      } else if (e.key === 'r' || e.key === 'R') {
+        e.preventDefault()
+        void loadData()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [session, shortcutsHelpOpen, navOpen, navigate, loadData])
 
   const withMutation = useCallback(
     async (fn: () => Promise<void>) => {
@@ -386,6 +457,13 @@ export default function App() {
       setUsers((prev) =>
         prev.map((item): User => (item.id === user.id ? { ...item, status: next } : item)),
       )
+      setMetrics((prev) => ({
+        ...prev,
+        totalActiveUsers:
+          next === 'active'
+            ? prev.totalActiveUsers + 1
+            : Math.max(0, prev.totalActiveUsers - 1),
+      }))
       showToast(
         next === 'blocked' ? `${user.name} blocked.` : `${user.name} unblocked.`,
         next === 'blocked' ? 'critical' : 'success',
@@ -432,6 +510,17 @@ export default function App() {
   ) => {
     void withMutation(async () => {
       await updateAdminUser(userId, payload)
+
+      const oldUser = users.find((u) => u.id === userId)
+      if (oldUser && payload.status && payload.status !== oldUser.status) {
+        setMetrics((prev) => ({
+          ...prev,
+          totalActiveUsers:
+            payload.status === 'active'
+              ? prev.totalActiveUsers + 1
+              : Math.max(0, prev.totalActiveUsers - 1),
+        }))
+      }
 
       // Optimistically update local users
       setUsers((prev) =>
@@ -545,7 +634,7 @@ export default function App() {
       showToast('Unavailable — no account found for this seller.', 'warning')
       return
     }
-    if (isSuperAdminEmail(seller.email)) {
+    if (isProtectedAdminEmail(seller.email)) {
       showToast(PROTECTED_ADMIN_NOTICE, 'warning')
       return
     }
@@ -556,6 +645,10 @@ export default function App() {
           user.id === seller.id ? { ...user, status: 'blocked' } : user,
         ),
       )
+      setMetrics((prev) => ({
+        ...prev,
+        totalActiveUsers: Math.max(0, prev.totalActiveUsers - 1),
+      }))
       showToast(`${seller.name} banned — account blocked.`, 'critical')
     })
   }
@@ -570,6 +663,17 @@ export default function App() {
   const handleUpdateListing = (listingId: string, payload: AdminListingUpdatePayload) => {
     void withMutation(async () => {
       await updateAdminListing(listingId, payload)
+
+      if (payload.status) {
+        const oldListing = listings.find((l) => l.id === listingId)
+        if (oldListing && oldListing.status !== payload.status) {
+          if (oldListing.status === 'flagged' && payload.status !== 'flagged') {
+            setMetrics((prev) => ({ ...prev, flaggedCount: Math.max(0, prev.flaggedCount - 1) }))
+          } else if (oldListing.status !== 'flagged' && payload.status === 'flagged') {
+            setMetrics((prev) => ({ ...prev, flaggedCount: prev.flaggedCount + 1 }))
+          }
+        }
+      }
 
       setListings((prev) =>
         prev.map((l) => {
@@ -805,6 +909,7 @@ export default function App() {
         backend={backend}
         adminEmail={session.email}
         onSignOut={handleSignOut}
+        onOpenShortcuts={() => setShortcutsHelpOpen(true)}
       />
 
       <div className="lg:pl-[272px]">
@@ -819,6 +924,7 @@ export default function App() {
           refreshing={refreshing}
           adminEmail={session.email}
           onOpenProfile={() => navigate('settings')}
+          onOpenShortcuts={() => setShortcutsHelpOpen(true)}
         />
 
         <main className="mx-auto w-full max-w-[1440px] px-5 py-6 lg:px-8 lg:py-8">
@@ -959,6 +1065,128 @@ export default function App() {
       </div>
 
       <Toast message={toast} />
+      <KeyboardShortcutsModal
+        open={shortcutsHelpOpen}
+        onClose={() => setShortcutsHelpOpen(false)}
+      />
+    </div>
+  )
+}
+
+function KeyboardShortcutsModal({
+  open,
+  onClose,
+}: {
+  open: boolean
+  onClose: () => void
+}) {
+  useEffect(() => {
+    if (!open) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose()
+      }
+    }
+    const orig = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.body.style.overflow = orig
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [open, onClose])
+
+  if (!open) return null
+
+  const sections = [
+    {
+      title: 'Navigation',
+      items: [
+        { keys: ['1'], desc: 'Jump to Overview' },
+        { keys: ['2'], desc: 'Jump to Listings & Moderation' },
+        { keys: ['3'], desc: 'Jump to Wanted Board (WTB)' },
+        { keys: ['4'], desc: 'Jump to Users & Campuses' },
+        { keys: ['5'], desc: 'Jump to Connections & Chats' },
+        { keys: ['6'], desc: 'Jump to Settings & AI Config' },
+      ],
+    },
+    {
+      title: 'Operations & Focus',
+      items: [
+        { keys: ['/'], desc: 'Quick-focus search input in current view' },
+        { keys: ['⌘', 'K'], desc: 'Search shortcut (macOS / Windows Ctrl+K)' },
+        { keys: ['R'], desc: 'Refresh live data from CampusMart API' },
+        { keys: ['?'], desc: 'Open / close this keyboard shortcuts guide' },
+        { keys: ['Esc'], desc: 'Close dialogs, drawers, and dismiss focus' },
+      ],
+    },
+  ]
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Keyboard shortcuts"
+      className="fixed inset-0 z-70 flex items-center justify-center p-4"
+    >
+      <div
+        className="fixed inset-0 bg-black/60 backdrop-blur-xs transition-opacity"
+        onClick={onClose}
+      />
+      <div className="relative z-10 w-full max-w-lg rounded-2xl border border-line bg-surface p-6 shadow-2xl">
+        <div className="flex items-center justify-between border-b border-line pb-4">
+          <div>
+            <h2 className="text-[16px] font-semibold text-ink">Keyboard Shortcuts</h2>
+            <p className="mt-0.5 text-[12.5px] text-ink-muted">
+              Fast navigation and operation hotkeys for staff administrators
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="grid h-8 w-8 place-items-center rounded-lg text-ink-muted hover:bg-subtle hover:text-ink transition-colors"
+          >
+            <CloseIcon size={16} />
+          </button>
+        </div>
+
+        <div className="mt-5 space-y-6">
+          {sections.map((sec) => (
+            <div key={sec.title}>
+              <h3 className="text-[11.5px] font-bold uppercase tracking-wider text-ink-faint">
+                {sec.title}
+              </h3>
+              <div className="mt-2.5 divide-y divide-line/60 rounded-xl border border-line/70 bg-surface-2/40 px-3.5">
+                {sec.items.map((item, idx) => (
+                  <div
+                    key={idx}
+                    className="flex items-center justify-between py-2.5 text-[13px]"
+                  >
+                    <span className="text-ink">{item.desc}</span>
+                    <div className="flex items-center gap-1">
+                      {item.keys.map((k) => (
+                        <kbd
+                          key={k}
+                          className="inline-flex min-w-[22px] items-center justify-center rounded border border-line-strong bg-surface px-1.5 py-0.5 text-[11.5px] font-semibold text-ink shadow-2xs"
+                        >
+                          {k}
+                        </kbd>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-6 flex items-center justify-between border-t border-line pt-4 text-[12px] text-ink-faint">
+          <span>Tip: Hotkeys are paused while typing inside inputs.</span>
+          <Button variant="outline" className="h-8 px-3 text-[12px]" onClick={onClose}>
+            Close
+          </Button>
+        </div>
+      </div>
     </div>
   )
 }

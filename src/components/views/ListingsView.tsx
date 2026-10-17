@@ -270,6 +270,7 @@ export function ListingsView({
                 />
                 <input
                   type="search"
+                  data-search-input="true"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Search title, seller, campus, category, or tags…"
@@ -374,8 +375,8 @@ export function ListingsView({
           <div className="px-5 py-14 text-center">
             <p className="text-[14px] font-semibold text-ink">No listings in this view</p>
             <p className="mx-auto mt-1.5 max-w-sm text-[13px] leading-relaxed text-ink-muted">
-              {searchQuery || categoryFilter !== 'all' || collegeFilter !== 'all'
-                ? 'No listings match the current search query, campus, and category filters.'
+              {searchQuery || categoryFilter !== 'all' || collegeFilter !== 'all' || branchFilter !== 'all' || academicYearFilter !== 'all'
+                ? 'No listings match the current search query, campus, branch, year, or category filters.'
                 : filter === 'flagged'
                   ? 'No listing currently carries an AI trust flag. New flags appear here as agents scan the marketplace.'
                   : 'Nothing has this status right now.'}
@@ -386,6 +387,8 @@ export function ListingsView({
                 setFilter('all')
                 setCategoryFilter('all')
                 setCollegeFilter('all')
+                setBranchFilter('all')
+                setAcademicYearFilter('all')
                 setSearchQuery('')
               }}
             >

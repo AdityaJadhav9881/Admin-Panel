@@ -17,6 +17,7 @@ import {
   API_BASE_URL,
   API_HOST,
   getAuthToken,
+  readLocalAiConfig,
 } from './client'
 
 /** Probes are independent of the data load — a shorter cap keeps the panel responsive. */
@@ -195,7 +196,17 @@ async function probeAiConfig(): Promise<Service> {
   if (outcome.kind === 'network') {
     return { ...base, state: 'unavailable', latencyMs: null, note: unreachableNote() }
   }
-  if (outcome.response.status === 404 || outcome.response.status === 405) {
+  if (outcome.response.status === 404 || outcome.response.status === 405 || outcome.response.status === 422) {
+    const cached = readLocalAiConfig()
+    if (cached && (cached.ai_api_key || (cached.api_keys_pool && cached.api_keys_pool.length > 0))) {
+      const activePoolCount = cached.api_keys_pool?.filter((s) => s.enabled).length ?? 1
+      return {
+        ...base,
+        state: 'operational',
+        latencyMs: outcome.ms,
+        note: `${cached.ai_provider} · ${cached.ai_model} · Hydra Pool active (${activePoolCount} keys cached locally)`,
+      }
+    }
     return {
       ...base,
       state: 'degraded',

@@ -16,6 +16,7 @@ interface TopbarProps {
   refreshing: boolean
   adminEmail?: string
   onOpenProfile?: () => void
+  onOpenShortcuts?: () => void
 }
 
 export function Topbar({
@@ -29,6 +30,7 @@ export function Topbar({
   refreshing,
   adminEmail,
   onOpenProfile,
+  onOpenShortcuts,
 }: TopbarProps) {
   const healthTone: Record<StatusTone, string> = {
     success: 'bg-success',
@@ -56,12 +58,24 @@ export function Topbar({
       </div>
 
       <div className="ml-auto flex items-center gap-2.5">
+        {onOpenShortcuts && (
+          <button
+            type="button"
+            onClick={onOpenShortcuts}
+            title="Keyboard shortcuts cheatsheet (Press ?)"
+            aria-label="View keyboard shortcuts"
+            className="hidden h-9 items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 text-[12px] font-medium text-ink-muted hover:border-line-strong hover:bg-surface-2 hover:text-ink lg:flex transition-colors cursor-pointer"
+          >
+            <kbd className="font-mono text-[10.5px] rounded bg-surface-2 border border-line px-1.5 py-0.5 text-ink-muted">⌘K / ?</kbd>
+            <span className="hidden xl:inline">Hotkeys</span>
+          </button>
+        )}
         <button
           type="button"
           onClick={onRefresh}
           disabled={refreshing}
-          aria-label="Refresh live data"
-          title="Re-fetch users, listings, agents and flags from the backend"
+          aria-label="Refresh live data (Press R)"
+          title="Re-fetch users, listings, agents and flags from the backend (Press R)"
           className="flex h-9 items-center gap-2 rounded-lg border border-line bg-surface px-3 text-[13px] font-medium text-ink transition-colors hover:border-line-strong hover:bg-surface-2 disabled:pointer-events-none disabled:opacity-60"
         >
           <RefreshIcon size={15} className={refreshing ? 'animate-spin' : undefined} />

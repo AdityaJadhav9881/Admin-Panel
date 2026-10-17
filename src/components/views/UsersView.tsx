@@ -272,6 +272,7 @@ export function UsersView({
               />
               <input
                 type="search"
+                data-search-input="true"
                 value={query}
                 onChange={(event) => onQueryChange(event.target.value)}
                 placeholder="Search student, email, college…"

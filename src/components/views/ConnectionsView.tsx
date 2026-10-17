@@ -332,6 +332,7 @@ export function ConnectionsView({
               />
               <input
                 type="search"
+                data-search-input="true"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search buyer, seller, item…"

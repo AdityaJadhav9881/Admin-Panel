@@ -41,6 +41,7 @@ interface SidebarProps {
   backend: { connected: boolean; label: string }
   adminEmail: string
   onSignOut: () => void
+  onOpenShortcuts?: () => void
 }
 
 export function Sidebar({
@@ -56,20 +57,21 @@ export function Sidebar({
   backend,
   adminEmail,
   onSignOut,
+  onOpenShortcuts,
 }: SidebarProps) {
   const badges: Partial<Record<ViewId, { count: number; className: string }>> = {
-    overview: flaggedCount > 0 ? { count: flaggedCount, className: 'bg-critical-soft text-critical' } : undefined,
+    overview: flaggedCount > 0 ? { count: flaggedCount, className: 'bg-critical/20 text-red-300' } : undefined,
     listings:
-      flaggedListings > 0 ? { count: flaggedListings, className: 'bg-critical-soft text-critical' } : undefined,
+      flaggedListings > 0 ? { count: flaggedListings, className: 'bg-critical/20 text-red-300' } : undefined,
     wanted:
       wantedCount && wantedCount > 0
         ? { count: wantedCount, className: 'bg-amber-500/20 text-amber-300' }
         : undefined,
     connections:
       connectionsCount && connectionsCount > 0
-        ? { count: connectionsCount, className: 'bg-brand-soft text-brand-strong' }
+        ? { count: connectionsCount, className: 'bg-brand/25 text-[#9db9ff]' }
         : undefined,
-    settings: pausedAgents > 0 ? { count: pausedAgents, className: 'bg-warning-soft text-warning' } : undefined,
+    settings: pausedAgents > 0 ? { count: pausedAgents, className: 'bg-warning/20 text-amber-300' } : undefined,
   }
 
   return (
@@ -207,6 +209,16 @@ export function Sidebar({
               Support: martaicampus@gmail.com
             </a>
           </p>
+          {onOpenShortcuts && (
+            <button
+              type="button"
+              onClick={onOpenShortcuts}
+              className="mt-2 flex w-full items-center justify-between px-1 text-[11.5px] text-rail-muted hover:text-rail-ink transition-colors cursor-pointer text-left"
+            >
+              <span>Keyboard Shortcuts</span>
+              <kbd className="font-mono text-[10.5px] bg-white/10 rounded px-1.5 py-0.5 text-rail-ink">?</kbd>
+            </button>
+          )}
         </div>
       </aside>
     </>

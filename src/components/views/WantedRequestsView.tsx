@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { AdminWantedUpdatePayload } from '../../api/client'
 import type {
   Listing,
@@ -82,6 +82,22 @@ export function WantedRequestsView({
 
   // Delete Confirm Dialog state
   const [deletingId, setDeletingId] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!matchingRequest) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setMatchingRequest(null)
+      }
+    }
+    const originalOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.body.style.overflow = originalOverflow
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [matchingRequest])
 
   // Campuses list for filter dropdown
   const campusOptions = useMemo(() => {
@@ -308,6 +324,7 @@ export function WantedRequestsView({
                 />
                 <input
                   type="search"
+                  data-search-input="true"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Search item title, student name, college, or branch…"
@@ -931,6 +948,21 @@ interface EditWantedRequestDrawerProps {
 }
 
 function EditWantedRequestDrawer({ request, onClose, onSave }: EditWantedRequestDrawerProps) {
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose()
+      }
+    }
+    const originalOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.body.style.overflow = originalOverflow
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [onClose])
+
   const [title, setTitle] = useState(request.title)
   const [description, setDescription] = useState(request.description ?? '')
   const [category, setCategory] = useState<ListingCategory>(request.category)

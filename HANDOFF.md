@@ -1,6 +1,6 @@
 # HANDOFF — CampusMart AI Master Control (context for next session)
 
-_Last updated: 2026-10-17 (post-implementation of AI Config 422 Payload Formatting, Minimal Schema Failover, and Hydra Pool Local Persistence). Read this file first in a new session; it is the authoritative, full state snapshot._
+_Last updated: 2026-10-17 (post-implementation of Wanted Board (WTB) Request Management, Seller Matching, and Academic Branch/Year Moderation). Read this file first in a new session; it is the authoritative, full state snapshot._
 
 ## 1. Project
 
@@ -21,8 +21,8 @@ _Last updated: 2026-10-17 (post-implementation of AI Config 422 Payload Formatti
   - `468e21a` Multi-Key AI Hydra Load Balancer & Failover Pool engine (5–10 key slots, smart speed failover, auto-cooldown circuit breaker)
   - `87f61e4` Add College Grouping, CET Cell Badges, and Connections & Communications Intelligence Panel
   - `8c77526` God-Mode Administrative Edit & Override Capabilities (Users, Listings, Orders, and Chat Transcripts)
-  - `c0efaa7` Manage "Want to Buy" (WTB) Board, Seller Matching Engine, and Academic Branch/Year Moderation
-  - `[current]` Fix AI Config 422 Payload Formatting & Resilient Minimal Schema Failover
+  - `16ff3f` Manage "Want to Buy" (WTB) Board, Seller Matching Engine, and Academic Branch/Year Moderation
+  - `[current]` Line-by-Line Code Audit, Metric & State Synchronization, Accessible Drawer Traps, and Staff-Architect Keyboard Command Center (`1-6`, `/`, `⌘K`, `R`, `?`, `Esc`)
 - **Stack**: React 19 + TypeScript ~6.0 + Vite 8 + Tailwind v4 (`@tailwindcss/vite`), linting via `oxlint` (`.oxlintrc.json`: `react/rules-of-hooks: error`, `react/only-export-components: warn`).
 - **tsconfig constraints**: `noUnusedLocals`, `noUnusedParameters`, `erasableSyntaxOnly` (no constructor parameter properties), `"types": ["vite/client"]`.
 - **Reference docs**: two philosophy `.txt` files in the project root (INFINITY DESIGN). Key principles applied throughout: neutral foundation, controlled accent, semantic color, progressive disclosure, no dead ends, honest data labelling (placeholder values are always labelled as such).
@@ -117,7 +117,7 @@ npm run dev         # vite dev server
 
 ## 5. Verification Status
 
-- `npm run lint`: **Clean** — `oxlint` reported 0 warnings and 0 errors across 33 files.
+- `npm run lint`: **Clean** — `oxlint` reported 0 warnings and 0 errors across 33 files with 116 rules.
 - `npm run build`: **Clean** — `tsc -b && vite build` built 45 modules with 0 errors (dist output verified).
 - **Git Remote**: Synchronized with `origin/main`.
 

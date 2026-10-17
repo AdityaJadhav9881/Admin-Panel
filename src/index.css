@@ -152,6 +152,29 @@
   animation: warm-sweep 1.7s var(--ease-out-soft) infinite;
 }
 
+/* Custom slim modern scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #d3d9e3;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #93a0b6;
+}
+
+kbd {
+  font-family: var(--font-mono);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

@@ -1,10 +1,18 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { apiErrorMessage, type LoginProgress } from '../../api/client'
-import { AlertIcon, ShieldIcon } from '../icons'
+import { AlertIcon, EyeIcon, EyeOffIcon, ShieldIcon } from '../icons'
 import { Button } from '../ui/Button'
 import { ConnectingBox } from '../ui/ConnectingBox'
 
 const SLOW_NOTICE_MS = 2000
+
+const QUICK_PERSONNEL = [
+  { name: 'Aditya (Super Admin)', email: 'adityajadhav0167@gmail.com', pass: 'Jadhav@2007', role: 'Super Admin' },
+  { name: 'Sakshi Sutar', email: 'sakshisutar612@gmail.com', pass: 'Campus@2026', role: 'Admin' },
+  { name: 'Shrutika Patil', email: 'shrutikapatil8237@gmail.com', pass: 'Campus@2026', role: 'Admin' },
+  { name: 'Anjali Panaskar', email: 'anjalipanaskar11@gmail.com', pass: 'Campus@2026', role: 'Admin' },
+  { name: 'Sanskruti Patil', email: 'sanskrutipatil212006@gmail.com', pass: 'Campus@2026', role: 'Admin' },
+]
 
 interface LoginViewProps {
   onLogin: (email: string, password: string, onProgress: LoginProgress) => Promise<void>
@@ -13,6 +21,7 @@ interface LoginViewProps {
 export function LoginView({ onLogin }: LoginViewProps) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [slow, setSlow] = useState(false)
@@ -126,15 +135,25 @@ export function LoginView({ onLogin }: LoginViewProps) {
               >
                 Password
               </label>
-              <input
-                id="admin-password"
-                type="password"
-                autoComplete="current-password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                placeholder="••••••••"
-                className="mt-1.5 h-10 w-full rounded-lg border border-line bg-surface px-3 text-[13.5px] text-ink transition-colors placeholder:text-ink-faint hover:border-line-strong focus:border-brand"
-              />
+              <div className="relative mt-1.5">
+                <input
+                  id="admin-password"
+                  type={showPassword ? 'text' : 'password'}
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  placeholder="••••••••"
+                  className="h-10 w-full rounded-lg border border-line bg-surface pr-10 pl-3 text-[13.5px] text-ink transition-colors placeholder:text-ink-faint hover:border-line-strong focus:border-brand"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-faint hover:text-ink transition-colors cursor-pointer"
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showPassword ? <EyeOffIcon size={16} /> : <EyeIcon size={16} />}
+                </button>
+              </div>
             </div>
 
             <Button
@@ -146,6 +165,29 @@ export function LoginView({ onLogin }: LoginViewProps) {
               {submitting ? 'Signing in…' : 'Sign in'}
             </Button>
           </form>
+
+          {/* Quick Personnel Fill Bar */}
+          <div className="mt-5 border-t border-line pt-4">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-faint mb-2">
+              ⚡ Authorized Personnel Sign-in
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {QUICK_PERSONNEL.map((p) => (
+                <button
+                  key={p.email}
+                  type="button"
+                  onClick={() => {
+                    setEmail(p.email)
+                    setPassword(p.pass)
+                    setError(null)
+                  }}
+                  className="rounded-md border border-line bg-surface-2 px-2 py-1 text-[11px] font-medium text-ink-muted hover:border-brand/40 hover:bg-brand-soft/50 hover:text-brand-strong transition-colors cursor-pointer"
+                >
+                  {p.name}
+                </button>
+              ))}
+            </div>
+          </div>
 
           {showWarmup && (
             <div className="mt-4">

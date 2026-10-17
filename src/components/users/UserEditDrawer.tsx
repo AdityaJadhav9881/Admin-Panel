@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { AdminUserUpdatePayload } from '../../api/client'
 import { isProtectedAdminEmail } from '../../api/client'
 import type { User, UserStatus } from '../../data/mock'
@@ -41,6 +41,22 @@ export function UserEditDrawer({
   onSave,
   onDelete,
 }: UserEditDrawerProps) {
+  useEffect(() => {
+    if (!isOpen) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose()
+      }
+    }
+    const originalOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.body.style.overflow = originalOverflow
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [isOpen, onClose])
+
   if (!isOpen || !user) return null
 
   return (
