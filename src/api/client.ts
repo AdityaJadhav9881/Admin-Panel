@@ -64,6 +64,7 @@ export const endpoints = {
   products: '/admin/products',
   agents: '/admin/ai-agents',
   aiConfig: '/admin/ai-config',
+  aiConfigTestKey: '/admin/ai-config/test-key',
   aiChat: '/ai/chat',
   communications: '/admin/communications',
   transactions: '/admin/transactions',
@@ -835,6 +836,40 @@ export const QUICK_SEED_POOL_TEMPLATE: AiKeySlot[] = [
   {
     id: 'key-openrouter-1',
     label: 'OpenRouter Free Pool (Universal)',
+    provider: 'openrouter',
+    model: 'google/gemini-2.0-flash-exp:free',
+    base_url: 'https://openrouter.ai/api/v1',
+    api_key: '',
+    role: 'all',
+    enabled: true,
+    status: 'untested',
+  },
+]
+
+export const ZERO_CONFIG_SEED_SLOTS: AiKeySlot[] = [
+  {
+    id: 'key-slot-1',
+    label: 'Primary AI Key Slot',
+    provider: 'gemini',
+    model: 'gemini-2.5-flash',
+    api_key: '',
+    role: 'all',
+    enabled: true,
+    status: 'untested',
+  },
+  {
+    id: 'key-slot-2',
+    label: 'Secondary / Backup AI Key Slot',
+    provider: 'groq',
+    model: 'meta-llama/llama-4-scout-17b-16e-instruct',
+    api_key: '',
+    role: 'all',
+    enabled: true,
+    status: 'untested',
+  },
+  {
+    id: 'key-slot-3',
+    label: 'Failover / Open Pool Slot',
     provider: 'openrouter',
     model: 'google/gemini-2.0-flash-exp:free',
     base_url: 'https://openrouter.ai/api/v1',
@@ -2716,6 +2751,171 @@ export async function testAiPool(slots: AiKeySlot[]): Promise<AiPoolTestReport> 
     fastestSlotId,
     fastestLatencyMs,
     failoverChain: chain,
+  }
+}
+
+/* --- Zero-Config Auto-Discovery & Key Diagnostics ----------- */
+
+export function getProviderDisplayName(provider: string): string {
+  switch (provider.toLowerCase()) {
+    case 'gemini':
+      return 'Google Gemini'
+    case 'groq':
+      return 'Groq Cloud'
+    case 'openrouter':
+      return 'OpenRouter'
+    case 'openai':
+      return 'OpenAI'
+    case 'mistral':
+      return 'Mistral AI'
+    case 'cerebras':
+      return 'Cerebras'
+    default:
+      return provider ? provider.charAt(0).toUpperCase() + provider.slice(1) : 'Google Gemini'
+  }
+}
+
+export function autoDetectProviderFromKey(key: string): {
+  provider: AiKeyProvider
+  label: string
+  model: string
+  baseUrl?: string
+} {
+  const trimmed = sanitizeAiInput(key)
+  if (trimmed.startsWith('gsk_')) {
+    return {
+      provider: 'groq',
+      label: 'Groq Cloud',
+      model: 'meta-llama/llama-4-scout-17b-16e-instruct',
+    }
+  }
+  if (trimmed.startsWith('sk-or-')) {
+    return {
+      provider: 'openrouter',
+      label: 'OpenRouter',
+      model: 'google/gemini-2.0-flash-exp:free',
+      baseUrl: 'https://openrouter.ai/api/v1',
+    }
+  }
+  if (trimmed.startsWith('sk-proj-') || (trimmed.startsWith('sk-') && !trimmed.startsWith('sk-or-'))) {
+    return {
+      provider: 'openai',
+      label: 'OpenAI',
+      model: 'gpt-4o-mini',
+    }
+  }
+  if (trimmed.startsWith('csk-')) {
+    return {
+      provider: 'cerebras',
+      label: 'Cerebras',
+      model: 'llama3.1-70b',
+    }
+  }
+  // Default to Google Gemini (most common AI key starting with AIzaSy...)
+  return {
+    provider: 'gemini',
+    label: 'Google Gemini',
+    model: 'gemini-2.5-flash',
+  }
+}
+
+export interface AutoDiscoverKeyResult {
+  ok: boolean
+  provider: string
+  providerName: string
+  activeModel: string
+  latencyMs: number
+  sampleOutput?: string
+  error?: string
+}
+
+export async function testAutoDiscoverAiKey(apiKey: string): Promise<AutoDiscoverKeyResult> {
+  const started = performance.now()
+  const key = sanitizeAiInput(apiKey)
+
+  if (!key) {
+    return {
+      ok: false,
+      provider: '',
+      providerName: '',
+      activeModel: '',
+      latencyMs: 0,
+      error: 'Please enter or paste an API key first.',
+    }
+  }
+
+  const detected = autoDetectProviderFromKey(key)
+
+  // 1. Attempt POST /admin/ai-config/test-key
+  try {
+    const res = await api.post<Record<string, unknown>>(endpoints.aiConfigTestKey, {
+      api_key: key,
+      key: key,
+      provider: detected.provider,
+      model: detected.model,
+    })
+    const latencyMs =
+      typeof res?.latency_ms === 'number'
+        ? res.latency_ms
+        : Math.round(performance.now() - started)
+    const provider = String(res?.provider || detected.provider)
+    const activeModel = String(res?.active_model || res?.model || detected.model)
+    const sampleOutput = typeof res?.sample_output === 'string' ? res.sample_output : undefined
+
+    return {
+      ok: true,
+      provider,
+      providerName: getProviderDisplayName(provider),
+      activeModel,
+      latencyMs,
+      sampleOutput,
+    }
+  } catch {
+    // 2. Graceful fallback if backend /admin/ai-config/test-key endpoint is deploying or returns 404/405/500:
+    // Execute live client-side test probe directly against the provider
+    try {
+      const slotTest = await testAiKeySlot({
+        id: 'discover-slot',
+        label: detected.label,
+        provider: detected.provider,
+        model: detected.model,
+        api_key: key,
+        base_url: detected.baseUrl,
+        role: 'all',
+        enabled: true,
+        status: 'untested',
+      })
+
+      if (slotTest.ok) {
+        return {
+          ok: true,
+          provider: slotTest.provider || detected.provider,
+          providerName: getProviderDisplayName(slotTest.provider || detected.provider),
+          activeModel: slotTest.model || detected.model,
+          latencyMs: slotTest.latencyMs,
+          sampleOutput: slotTest.sampleOutput,
+        }
+      }
+
+      return {
+        ok: false,
+        provider: detected.provider,
+        providerName: detected.label,
+        activeModel: detected.model,
+        latencyMs: slotTest.latencyMs,
+        error: slotTest.error || 'Connection failed: Invalid API key or model unreachable.',
+      }
+    } catch (clientErr) {
+      const latencyMs = Math.round(performance.now() - started)
+      return {
+        ok: false,
+        provider: detected.provider,
+        providerName: detected.label,
+        activeModel: detected.model,
+        latencyMs,
+        error: apiErrorMessage(clientErr),
+      }
+    }
   }
 }
 

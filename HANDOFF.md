@@ -22,8 +22,8 @@ _Last updated: 2026-10-17 (post-implementation of Desktop & Mobile UI/UX Overhau
   - `87f61e4` Add College Grouping, CET Cell Badges, and Connections & Communications Intelligence Panel
   - `8c77526` God-Mode Administrative Edit & Override Capabilities (Users, Listings, Orders, and Chat Transcripts)
   - `16ff3f` Manage "Want to Buy" (WTB) Board, Seller Matching Engine, and Academic Branch/Year Moderation
-  - `6f8d1c9` Line-by-Line Code Audit, Metric & State Synchronization, Accessible Drawer Traps, and Keyboard Command Center
-  - `[current]` Desktop & Mobile UI/UX Overhaul: Universal College Formatter (`formatShortCollege`), Table-Fixed Layouts with Colgroups, Responsive Mobile Cards (`md:hidden`), Unclipped Actions, and 1-Tap Mobile Bottom Quick-Nav Bar
+  - `7bbf30d` Desktop & Mobile UI/UX Overhaul: Universal College Formatter, Table-Fixed Colgroup Layouts, Responsive Cards, and Mobile Quick-Nav
+  - `[current]` Zero-Config AI Configuration Engine: Streamlined Key-Only Slots, Auto-Detect Provider & Working Model Discovery (`POST /admin/ai-config/test-key`), and Prominent "🧪 Test & Auto-Discover Key" Diagnostic
 - **Stack**: React 19 + TypeScript ~6.0 + Vite 8 + Tailwind v4 (`@tailwindcss/vite`), linting via `oxlint` (`.oxlintrc.json`: `react/rules-of-hooks: error`, `react/only-export-components: warn`).
 - **tsconfig constraints**: `noUnusedLocals`, `noUnusedParameters`, `erasableSyntaxOnly` (no constructor parameter properties), `"types": ["vite/client"]`.
 - **Reference docs**: two philosophy `.txt` files in the project root (INFINITY DESIGN). Key principles applied throughout: neutral foundation, controlled accent, semantic color, progressive disclosure, no dead ends, honest data labelling (placeholder values are always labelled as such).
@@ -102,7 +102,7 @@ npm run dev         # vite dev server
 | `src/components/users/UserEditDrawer.tsx` | **Slide-Over God-Mode Student Editor**: Full Name, Email, Phone, Searchable CET Cell & All-India College Picker + Custom Override, "Also update college on all active listings by this student" checkbox, Trust score slider/input (`0.0–5.0`), Status toggle (`Active` | `Blocked`), Admin Password Reset with eye toggle, and Danger Zone permanent delete |
 | `src/components/views/ConnectionsView.tsx` | **Connections & Communications Intelligence Panel ("Who is in touch with whom")**: Top Network Metrics Bar, Interactive Connection Matrix, Order Handshake Editor (`OrderEditInlineForm` for final price, address, phone, payment method, order status), individual chat message deletion, and Official Admin Intervention Note input |
 | `src/components/views/SettingsView.tsx` | Agent runtime toggles, live server & API health probes with "Run Live Probe" button, `AdminProfilePanel` (session info & password change), and `AiConfigPanel` |
-| `src/components/views/AiConfigPanel.tsx` | **Multi-Key AI Hydra Load Balancer & Failover Pool Engine**: Top Pool Summary Bar (active key counter, 60s circuit breaker badge, Routing Mode Selector with Smart Speed Failover, Round-Robin, and Role-Based), API Key Pool Slots Manager, and Bottom Action Bar with **Test Full Pool Failover** & **Save & Push Key Pool** |
+| `src/components/views/AiConfigPanel.tsx` | **Zero-Config AI Engine & Multi-Key Load Balancer**: Streamlined Key-Only Slots (Gemini, Groq, OpenRouter, OpenAI), automatic provider detection & model discovery, prominent **"🧪 Test & Auto-Discover Key"** diagnostic (`POST /admin/ai-config/test-key`), and Bottom Action Bar with **Test Full Pool Failover** & **Save & Push Key Pool** |
 | `src/components/settings/AdminProfilePanel.tsx` | Authorized administrator profile management, session overview, and local/backend password change form |
 | `src/components/ui/ConnectingBox.tsx` | Cold-start status box with progress bar and elapsed timer |
 | `src/components/ui/*` | `Button`, `Badge`, `Toggle`, `Panel`, `MetricCard`, `ConfirmDialog`, `Toast`, `ServiceRow` |
