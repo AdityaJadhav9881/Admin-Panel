@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { Listing, ListingCategory, User } from '../../data/mock'
 import {
   LISTING_DELETE_TRUST_PENALTY,
   categoryLabel,
+  formatCollegeBadge,
   formatTrustScore,
   priceDeviation,
 } from '../../data/mock'
@@ -62,9 +63,25 @@ export function ListingsView({
 }: ListingsViewProps) {
   const [filter, setFilter] = useState<ListingFilter>('all')
   const [categoryFilter, setCategoryFilter] = useState<ListingCategory | 'all'>('all')
+  const [collegeFilter, setCollegeFilter] = useState<string>('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [confirm, setConfirm] = useState<{ kind: 'delete' | 'ban'; listing: Listing } | null>(null)
+
+  const collegeOptions = useMemo(() => {
+    const map = new Map<string, { name: string; code: string; count: number }>()
+    for (const listing of listings) {
+      const name = listing.collegeName || 'Government College of Engineering, Karad'
+      const code = listing.collegeCode || '6004'
+      const existing = map.get(name)
+      if (existing) {
+        existing.count++
+      } else {
+        map.set(name, { name, code, count: 1 })
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => b.count - a.count)
+  }, [listings])
 
   const counts = {
     all: listings.length,
@@ -78,6 +95,7 @@ export function ListingsView({
     if (filter === 'flagged' && listing.status !== 'flagged') return false
     if (filter !== 'all' && filter !== 'flagged' && listing.status !== filter) return false
     if (categoryFilter !== 'all' && listing.category !== categoryFilter) return false
+    if (collegeFilter !== 'all' && listing.collegeName !== collegeFilter) return false
 
     if (normalizedQuery) {
       const seller = users.find((user) => user.id === listing.sellerId)
@@ -86,12 +104,16 @@ export function ListingsView({
       const cat = (categoryLabel[listing.category] ?? listing.category).toLowerCase()
       const tags = (listing.aiTags ?? '').toLowerCase()
       const notes = (listing.aiConditionNotes ?? '').toLowerCase()
+      const cName = (listing.collegeName ?? '').toLowerCase()
+      const cCode = (listing.collegeCode ?? '').toLowerCase()
       if (
         !title.includes(normalizedQuery) &&
         !sellerName.includes(normalizedQuery) &&
         !cat.includes(normalizedQuery) &&
         !tags.includes(normalizedQuery) &&
-        !notes.includes(normalizedQuery)
+        !notes.includes(normalizedQuery) &&
+        !cName.includes(normalizedQuery) &&
+        !cCode.includes(normalizedQuery)
       ) {
         return false
       }
@@ -116,6 +138,8 @@ export function ListingsView({
       'Listing ID',
       'Title',
       'Seller Name',
+      'Campus Name',
+      'CET Code',
       'Category',
       'Status',
       'Price (INR)',
@@ -136,6 +160,8 @@ export function ListingsView({
         escape(l.id),
         escape(l.title),
         escape(seller?.name ?? l.sellerId),
+        escape(l.collegeName ?? 'Government College of Engineering, Karad'),
+        escape(l.collegeCode ?? '6004'),
         escape(categoryLabel[l.category] ?? l.category),
         escape(l.status),
         l.price,
@@ -218,28 +244,47 @@ export function ListingsView({
         {/* Search & Category Filter Bar */}
         <div className="border-b border-line bg-surface-2/40 px-5 py-3.5 space-y-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="relative flex-1 max-w-md">
-              <SearchIcon
-                size={16}
-                className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-ink-faint"
-              />
-              <input
-                type="search"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search title, seller, category, or AI tags…"
-                aria-label="Search listings by title, seller, category or tags"
-                className="h-9 w-full rounded-lg border border-line bg-surface pr-3 pl-9 text-[13px] text-ink transition-colors placeholder:text-ink-faint hover:border-line-strong focus:border-brand"
-              />
+            <div className="flex flex-1 flex-wrap items-center gap-2.5 max-w-xl">
+              <div className="relative flex-1 min-w-[200px]">
+                <SearchIcon
+                  size={16}
+                  className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-ink-faint"
+                />
+                <input
+                  type="search"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search title, seller, campus, category, or tags…"
+                  aria-label="Search listings by title, seller, campus, category or tags"
+                  className="h-9 w-full rounded-lg border border-line bg-surface pr-3 pl-9 text-[13px] text-ink transition-colors placeholder:text-ink-faint hover:border-line-strong focus:border-brand"
+                />
+              </div>
+
+              {/* College Dropdown Filter */}
+              <select
+                value={collegeFilter}
+                onChange={(e) => setCollegeFilter(e.target.value)}
+                className="h-9 rounded-lg border border-line bg-surface px-2.5 text-[12.5px] text-ink transition-colors hover:border-line-strong focus:border-brand focus:outline-none"
+                aria-label="Filter by campus"
+              >
+                <option value="all">🎓 All Campuses ({listings.length})</option>
+                {collegeOptions.map((c) => (
+                  <option key={c.name} value={c.name}>
+                    {c.name} · CET {c.code} ({c.count})
+                  </option>
+                ))}
+              </select>
             </div>
+
             <div className="flex items-center gap-2 text-[12px] text-ink-muted">
               <span>Showing {visible.length} of {listings.length} listings</span>
-              {(searchQuery || categoryFilter !== 'all') && (
+              {(searchQuery || categoryFilter !== 'all' || collegeFilter !== 'all') && (
                 <button
                   type="button"
                   onClick={() => {
                     setSearchQuery('')
                     setCategoryFilter('all')
+                    setCollegeFilter('all')
                   }}
                   className="font-medium text-brand hover:underline"
                 >
@@ -279,8 +324,8 @@ export function ListingsView({
           <div className="px-5 py-14 text-center">
             <p className="text-[14px] font-semibold text-ink">No listings in this view</p>
             <p className="mx-auto mt-1.5 max-w-sm text-[13px] leading-relaxed text-ink-muted">
-              {searchQuery || categoryFilter !== 'all'
-                ? 'No listings match the current search query and category filters.'
+              {searchQuery || categoryFilter !== 'all' || collegeFilter !== 'all'
+                ? 'No listings match the current search query, campus, and category filters.'
                 : filter === 'flagged'
                   ? 'No listing currently carries an AI trust flag. New flags appear here as agents scan the marketplace.'
                   : 'Nothing has this status right now.'}
@@ -290,6 +335,7 @@ export function ListingsView({
               onClick={() => {
                 setFilter('all')
                 setCategoryFilter('all')
+                setCollegeFilter('all')
                 setSearchQuery('')
               }}
             >
@@ -340,6 +386,9 @@ export function ListingsView({
                         <p className="mt-0.5 truncate text-[12.5px] text-ink-muted">
                           {seller?.name ?? 'Unknown seller'} · {categoryLabel[listing.category]}
                         </p>
+                        <p className="mt-1 inline-flex items-center gap-1 rounded-md bg-brand-soft/80 px-2 py-0.5 text-[11px] font-medium text-brand-strong">
+                          {formatCollegeBadge(listing.collegeName, listing.collegeCode)}
+                        </p>
                         <p className="tabular mt-1 text-[12.5px] text-ink-muted">
                           <span className="font-medium text-ink">{formatMoney(listing.price)}</span>
                           {' · AI '}
@@ -363,16 +412,16 @@ export function ListingsView({
             </ul>
 
             <div className="hidden overflow-x-auto sm:block">
-              <table className="w-full min-w-[920px] border-collapse text-left">
+              <table className="w-full min-w-[1040px] border-collapse text-left">
                 <thead>
                   <tr className="border-b border-line">
-                    {['Listing', 'Seller', 'Category', 'Listed price', 'AI price', 'Trust flag', ''].map(
+                    {['Listing', 'Seller', 'Campus / CET Code', 'Category', 'Listed price', 'AI price', 'Trust flag', ''].map(
                       (heading, index) => (
                         <th
                           key={heading || `col-${index}`}
                           scope="col"
                           className={`px-5 py-3 text-[10.5px] font-semibold tracking-[0.09em] text-ink-faint uppercase ${
-                            index === 6 ? 'text-right' : ''
+                            index === 7 ? 'text-right' : ''
                           }`}
                         >
                           {heading}
@@ -426,6 +475,16 @@ export function ListingsView({
                                 )}
                               </p>
                             </div>
+                          </div>
+                        </td>
+                        <td className="px-5 py-3.5">
+                          <div className="max-w-[220px]">
+                            <span
+                              className="inline-flex items-center gap-1 rounded-md bg-brand-soft/70 px-2 py-0.5 text-[11.5px] font-medium text-brand-strong"
+                              title={`${listing.collegeName ?? 'GCOE Karad'} · CET ${listing.collegeCode ?? '6004'}`}
+                            >
+                              <span className="truncate">{formatCollegeBadge(listing.collegeName, listing.collegeCode)}</span>
+                            </span>
                           </div>
                         </td>
                         <td className="px-5 py-3.5 text-[13px] text-ink-muted">

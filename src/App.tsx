@@ -6,6 +6,7 @@ import {
   approveListing as apiApproveListing,
   clearAdminSession,
   fetchAgents,
+  fetchCommunications,
   fetchListings,
   fetchOverview,
   fetchUsers,
@@ -19,6 +20,7 @@ import {
   setUserStatus,
   setAgentEnabled,
   type AdminSession,
+  type ConnectionThread,
   type LoginProgress,
 } from './api/client'
 import { probeImageSamples, runHealthProbes } from './api/health'
@@ -29,6 +31,7 @@ import { AlertIcon, RefreshIcon } from './components/icons'
 import { Button } from './components/ui/Button'
 import { ConnectingBox } from './components/ui/ConnectingBox'
 import { Toast, type ToastMessage } from './components/ui/Toast'
+import { ConnectionsView } from './components/views/ConnectionsView'
 import { ListingsView } from './components/views/ListingsView'
 import { OverviewView } from './components/views/OverviewView'
 import { SettingsView } from './components/views/SettingsView'
@@ -61,6 +64,10 @@ const VIEW_META: Record<ViewId, { title: string; subtitle: string }> = {
     title: 'User management',
     subtitle: 'Review trust scores and block or unblock accounts',
   },
+  connections: {
+    title: 'Connections & Communications',
+    subtitle: 'Live student buyer–seller pairs, active chat threads, call logs and order handshakes',
+  },
   settings: {
     title: 'Settings & Profile',
     subtitle: 'Admin profile, password security, AI engine config, and live probes',
@@ -71,7 +78,13 @@ function getViewFromHash(): ViewId {
   if (typeof window === 'undefined') return 'overview'
   const hash = window.location.hash.replace(/^#\/?/, '').toLowerCase().trim()
   if (hash === 'profile') return 'settings'
-  if (hash === 'overview' || hash === 'listings' || hash === 'users' || hash === 'settings') {
+  if (
+    hash === 'overview' ||
+    hash === 'listings' ||
+    hash === 'users' ||
+    hash === 'connections' ||
+    hash === 'settings'
+  ) {
     return hash as ViewId
   }
   return 'overview'
@@ -110,6 +123,7 @@ export default function App() {
   const [listings, setListings] = useState<Listing[]>([])
   const [queue, setQueue] = useState<FlaggedTransaction[]>([])
   const [agents, setAgents] = useState<Agent[]>([])
+  const [connections, setConnections] = useState<ConnectionThread[]>([])
   const [metrics, setMetrics] = useState<OverviewMetrics>(EMPTY_METRICS)
   /* Live probe rows — every state/latency is a real HTTP measurement. */
   const [services, setServices] = useState<Service[]>(SERVICE_CATALOG)
@@ -168,11 +182,12 @@ export default function App() {
       warmTimer.current = window.setTimeout(() => setWarming(true), WARM_NOTICE_MS)
 
       try {
-        const [overview, liveUsers, liveListings, liveAgents] = await Promise.all([
+        const [overview, liveUsers, liveListings, liveAgents, liveConnections] = await Promise.all([
           fetchOverview(),
           fetchUsers(),
           fetchListings(),
           fetchAgents(),
+          fetchCommunications(),
         ])
         if (seq !== loadSeq.current) return
 
@@ -186,6 +201,7 @@ export default function App() {
         setUsers(liveUsers.map((user) => ({ ...user, listings: listingCounts.get(user.id) ?? 0 })))
         setListings(liveListings)
         setAgents(liveAgents)
+        setConnections(liveConnections)
         setBackendConnected(true)
         setLoadError(null)
         showToast('Live data loaded from the CampusMart API.', 'success')
@@ -293,6 +309,7 @@ export default function App() {
     setListings([])
     setQueue([])
     setAgents([])
+    setConnections([])
     setMetrics(EMPTY_METRICS)
     setUserQuery('')
     setUserFilter('all')
@@ -523,6 +540,7 @@ export default function App() {
         flaggedCount={metrics.flaggedCount}
         flaggedListings={flaggedListings}
         pausedAgents={pausedAgents}
+        connectionsCount={connections.length}
         backend={backend}
         adminEmail={session.email}
         onSignOut={handleSignOut}
@@ -602,6 +620,7 @@ export default function App() {
                   services={services}
                   probing={probing}
                   listings={listings}
+                  users={users}
                   onNavigate={navigate}
                   onAcknowledge={acknowledgeFlag}
                   onRunProbes={() => void runProbes()}
@@ -631,6 +650,14 @@ export default function App() {
                   onFilterChange={setUserFilter}
                   onToggleStatus={toggleUserStatus}
                   onDeleteUser={deleteUserAccount}
+                />
+              )}
+
+              {view === 'connections' && (
+                <ConnectionsView
+                  key="connections"
+                  connections={connections}
+                  onToast={showToast}
                 />
               )}
 

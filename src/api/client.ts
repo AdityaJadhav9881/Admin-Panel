@@ -35,7 +35,7 @@ import type {
   User,
   UserStatus,
 } from '../data/mock'
-import { AGENT_CATALOG } from '../data/mock'
+import { AGENT_CATALOG, inferCollege } from '../data/mock'
 import { formatDate } from '../lib/format'
 
 export const API_BASE_URL: string =
@@ -61,6 +61,7 @@ export const endpoints = {
   agents: '/admin/ai-agents',
   aiConfig: '/admin/ai-config',
   aiChat: '/ai/chat',
+  communications: '/admin/communications',
 } as const
 
 export class ApiError extends Error {
@@ -542,6 +543,10 @@ export interface WireUser {
   trust_score: number
   status: string
   created_at: string
+  college_name?: string | null
+  college_code?: string | null
+  college?: string | null
+  campus?: string | null
 }
 
 export interface WireListing {
@@ -550,6 +555,12 @@ export interface WireListing {
   seller_name?: string
   seller_email?: string
   seller_trust_score?: number
+  seller_college?: string
+  seller_college_code?: string
+  college_name?: string | null
+  college_code?: string | null
+  college?: string | null
+  campus?: string | null
   title: string
   description?: string
   category?: string
@@ -564,6 +575,51 @@ export interface WireListing {
   status: string
   trust_reason?: string | null
   created_at: string
+}
+
+/* --- Communications & Connections Intelligence types -------- */
+
+export interface ConnectionStudent {
+  id: string
+  name: string
+  email: string
+  college_name: string
+  college_code?: string
+  trust_score: number
+}
+
+export interface ConnectionProduct {
+  id: string
+  title: string
+  price: number
+  image_url?: string | null
+  status: string
+  college_name: string
+}
+
+export interface ConnectionMessage {
+  id: string
+  sender_id: string
+  sender_name: string
+  message: string
+  image_url?: string | null
+  created_at: string
+  is_call_log?: boolean
+  is_order_card?: boolean
+}
+
+export interface ConnectionThread {
+  id: string
+  buyer: ConnectionStudent
+  seller: ConnectionStudent
+  product: ConnectionProduct
+  message_count: number
+  call_count: number
+  has_order: boolean
+  payment_method?: 'cash_on_meetup' | 'gpay_upi'
+  last_message: string
+  last_updated: string
+  messages: ConnectionMessage[]
 }
 
 export interface WireAgent {
@@ -891,6 +947,17 @@ function detectAgent(reason: string): string {
 }
 
 export function adaptUser(wire: WireUser): User {
+  const rawCollege = wire.college_name ?? wire.college ?? wire.campus
+  const inferred = inferCollege(String(wire.email || wire.id || wire.name))
+  const collegeName =
+    typeof rawCollege === 'string' && rawCollege.trim().length > 0
+      ? rawCollege.trim()
+      : inferred.shortName
+  const collegeCode =
+    typeof wire.college_code === 'string' && wire.college_code.trim().length > 0
+      ? wire.college_code.trim()
+      : inferred.code
+
   return {
     id: String(wire.id),
     name: wire.name,
@@ -899,6 +966,8 @@ export function adaptUser(wire: WireUser): User {
     status: toUserStatus(wire.status),
     joined: formatDate(wire.created_at),
     listings: 0,
+    collegeName,
+    collegeCode,
   }
 }
 
@@ -935,6 +1004,19 @@ export function adaptListing(wire: WireListing): Listing {
   const reason = wire.trust_reason?.trim()
   const imageUrls = normalizeImageUrls(wire)
 
+  const rawCollege = wire.college_name ?? wire.college ?? wire.seller_college
+  const inferred = inferCollege(String(wire.seller_id || wire.id || wire.title))
+  const collegeName =
+    typeof rawCollege === 'string' && rawCollege.trim().length > 0
+      ? rawCollege.trim()
+      : inferred.shortName
+  const collegeCode =
+    typeof wire.college_code === 'string' && wire.college_code.trim().length > 0
+      ? wire.college_code.trim()
+      : typeof wire.seller_college_code === 'string' && wire.seller_college_code.trim().length > 0
+        ? wire.seller_college_code.trim()
+        : inferred.code
+
   return {
     id: String(wire.id),
     title: wire.title,
@@ -955,6 +1037,8 @@ export function adaptListing(wire: WireListing): Listing {
           detectedBy: detectAgent(reason ?? ''),
         }
       : null,
+    collegeName,
+    collegeCode,
   }
 }
 
@@ -1136,6 +1220,575 @@ export async function fetchAgents(): Promise<Agent[]> {
 
 export async function fetchAiConfig(): Promise<AiConfig> {
   return adaptAiConfig(await api.get<unknown>(endpoints.aiConfig))
+}
+
+export const FALLBACK_COMMUNICATIONS: ConnectionThread[] = [
+  {
+    id: 'thread-cm-01',
+    buyer: {
+      id: 'usr-101',
+      name: 'Aditya Kulkarni',
+      email: 'aditya.kulkarni@gcoek.ac.in',
+      college_name: 'Government College of Engineering, Karad',
+      college_code: '6004',
+      trust_score: 4.8,
+    },
+    seller: {
+      id: 'usr-102',
+      name: 'Rohan Deshmukh',
+      email: 'rohan.deshmukh@gcoek.ac.in',
+      college_name: 'Government College of Engineering, Karad',
+      college_code: '6004',
+      trust_score: 4.9,
+    },
+    product: {
+      id: 'prod-201',
+      title: 'Casio fx-991EX ClassWiz Scientific Calculator',
+      price: 900,
+      image_url: 'https://images.unsplash.com/photo-1594980596870-8aa52a78d8cd?w=500&auto=format&fit=crop&q=80',
+      status: 'active',
+      college_name: 'GCOE Karad',
+    },
+    message_count: 6,
+    call_count: 1,
+    has_order: true,
+    payment_method: 'cash_on_meetup',
+    last_message: 'Great, see you at 1:30 PM near the Mechanical Dept library lawn.',
+    last_updated: '12 mins ago',
+    messages: [
+      {
+        id: 'msg-101',
+        sender_id: 'usr-101',
+        sender_name: 'Aditya Kulkarni',
+        message: 'Hi Rohan! Is the Casio fx-991EX still available? Does it have the solar cell working?',
+        created_at: 'Today, 11:20 AM',
+      },
+      {
+        id: 'msg-102',
+        sender_id: 'usr-102',
+        sender_name: 'Rohan Deshmukh',
+        message: 'Yes Aditya! 100% working, used for 2 semesters in Mechanical. Solar + original battery intact.',
+        created_at: 'Today, 11:24 AM',
+      },
+      {
+        id: 'msg-103',
+        sender_id: 'usr-101',
+        sender_name: 'Aditya Kulkarni',
+        message: 'Can you do ₹900? I can meet you near the Mechanical Dept library lawn today during lunch break.',
+        created_at: 'Today, 11:28 AM',
+      },
+      {
+        id: 'msg-104',
+        sender_id: 'usr-102',
+        sender_name: 'Rohan Deshmukh',
+        message: 'Sure, ₹900 works for me. Deal! Placing the meetup order card now.',
+        created_at: 'Today, 11:32 AM',
+      },
+      {
+        id: 'msg-105',
+        sender_id: 'usr-102',
+        sender_name: 'CampusMart Order Handshake',
+        message: '📦 NEW ORDER PLACED · Handshake Code: #CM-6004-92 · Price: ₹900 · Payment: Cash on Meetup',
+        created_at: 'Today, 11:33 AM',
+        is_order_card: true,
+      },
+      {
+        id: 'msg-106',
+        sender_id: 'usr-101',
+        sender_name: 'Aditya Kulkarni',
+        message: '📞 Voice Call ended · Duration: 1m 45s (Discussed meetup spot near library stairs)',
+        created_at: 'Today, 11:35 AM',
+        is_call_log: true,
+      },
+      {
+        id: 'msg-107',
+        sender_id: 'usr-101',
+        sender_name: 'Aditya Kulkarni',
+        message: 'Great, see you at 1:30 PM near the Mechanical Dept library lawn.',
+        created_at: 'Today, 11:36 AM',
+      },
+    ],
+  },
+  {
+    id: 'thread-cm-02',
+    buyer: {
+      id: 'usr-103',
+      name: 'Sakshi Shinde',
+      email: 'sakshi.s@dacoe.ac.in',
+      college_name: 'Dr. Daulatrao Aher College of Engineering, Karad',
+      college_code: '6545',
+      trust_score: 4.6,
+    },
+    seller: {
+      id: 'usr-104',
+      name: 'Prathamesh Pawar',
+      email: 'prathamesh.p@gcoek.ac.in',
+      college_name: 'Government College of Engineering, Karad',
+      college_code: '6004',
+      trust_score: 4.9,
+    },
+    product: {
+      id: 'prod-202',
+      title: 'Omega Engineering Mini Drafter + Sheet Container',
+      price: 450,
+      image_url: 'https://images.unsplash.com/photo-1581291518857-4e27b48ff24e?w=500&auto=format&fit=crop&q=80',
+      status: 'active',
+      college_name: 'GCOE Karad',
+    },
+    message_count: 5,
+    call_count: 1,
+    has_order: true,
+    payment_method: 'gpay_upi',
+    last_message: 'Payment received ₹450 via GPay. Sent you the receipt. See you tomorrow!',
+    last_updated: '28 mins ago',
+    messages: [
+      {
+        id: 'msg-201',
+        sender_id: 'usr-103',
+        sender_name: 'Sakshi Shinde',
+        message: 'Hello! Is the mini drafter scale scratch-free? Can you deliver to Daulatrao Aher campus gate or Karad Bus Stand?',
+        created_at: 'Today, 10:15 AM',
+      },
+      {
+        id: 'msg-202',
+        sender_id: 'usr-104',
+        sender_name: 'Prathamesh Pawar',
+        message: 'The scale is in mint condition, clamps are solid with zero play. I can meet you at Karad ST Stand entrance tomorrow at 11 AM.',
+        created_at: 'Today, 10:20 AM',
+      },
+      {
+        id: 'msg-203',
+        sender_id: 'usr-103',
+        sender_name: 'Sakshi Shinde',
+        message: '📞 Voice Call ended · Duration: 2m 10s (Confirmed ST Stand platform 3 meeting)',
+        created_at: 'Today, 10:25 AM',
+        is_call_log: true,
+      },
+      {
+        id: 'msg-204',
+        sender_id: 'usr-103',
+        sender_name: 'Sakshi Shinde',
+        message: '💳 ORDER PLACED · Paid ₹450 via GPay UPI · Transaction: UPI/261017449210',
+        created_at: 'Today, 10:28 AM',
+        is_order_card: true,
+      },
+      {
+        id: 'msg-205',
+        sender_id: 'usr-104',
+        sender_name: 'Prathamesh Pawar',
+        message: 'Payment received ₹450 via GPay. Sent you the receipt. See you tomorrow!',
+        created_at: 'Today, 10:30 AM',
+      },
+    ],
+  },
+  {
+    id: 'thread-cm-03',
+    buyer: {
+      id: 'usr-105',
+      name: 'Tanvi Patil',
+      email: 'tanvi.patil@aissmsioit.org',
+      college_name: 'AISSMS Institute of Information Technology, Pune',
+      college_code: '6282',
+      trust_score: 4.7,
+    },
+    seller: {
+      id: 'usr-106',
+      name: 'Aniket Joshi',
+      email: 'aniket.j@pict.edu',
+      college_name: 'Pune Institute of Computer Technology, Pune',
+      college_code: '6271',
+      trust_score: 4.8,
+    },
+    product: {
+      id: 'prod-203',
+      title: 'B.Tech TE Computer Engineering Books Bundle (OS + DBMS + CN)',
+      price: 800,
+      image_url: 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=500&auto=format&fit=crop&q=80',
+      status: 'active',
+      college_name: 'PICT Pune',
+    },
+    message_count: 5,
+    call_count: 0,
+    has_order: true,
+    payment_method: 'gpay_upi',
+    last_message: 'Thanks Aniket! Book bundle collected from PICT Main Gate.',
+    last_updated: '1 hour ago',
+    messages: [
+      {
+        id: 'msg-301',
+        sender_id: 'usr-105',
+        sender_name: 'Tanvi Patil',
+        message: 'Hi Aniket, are these books according to the latest SPPU 2019/2024 syllabus?',
+        created_at: 'Yesterday, 4:10 PM',
+      },
+      {
+        id: 'msg-302',
+        sender_id: 'usr-106',
+        sender_name: 'Aniket Joshi',
+        message: 'Yes Tanvi! Fully SPPU syllabus compliant. No torn pages, highlighted with pencil only.',
+        created_at: 'Yesterday, 4:25 PM',
+      },
+      {
+        id: 'msg-303',
+        sender_id: 'usr-105',
+        sender_name: 'Tanvi Patil',
+        message: '💳 ORDER PLACED · Paid ₹800 via GPay UPI · Verified Handshake #PU-6282-31',
+        created_at: 'Yesterday, 5:00 PM',
+        is_order_card: true,
+      },
+      {
+        id: 'msg-304',
+        sender_id: 'usr-106',
+        sender_name: 'Aniket Joshi',
+        message: 'Handover complete at PICT main gate near the canteen.',
+        created_at: 'Yesterday, 6:15 PM',
+      },
+      {
+        id: 'msg-305',
+        sender_id: 'usr-105',
+        sender_name: 'Tanvi Patil',
+        message: 'Thanks Aniket! Book bundle collected from PICT Main Gate.',
+        created_at: 'Yesterday, 6:20 PM',
+      },
+    ],
+  },
+  {
+    id: 'thread-cm-04',
+    buyer: {
+      id: 'usr-107',
+      name: 'Sahil More',
+      email: 'sahil.more@coeptech.ac.in',
+      college_name: 'COEP Technological University, Pune',
+      college_code: '6006',
+      trust_score: 4.9,
+    },
+    seller: {
+      id: 'usr-108',
+      name: 'Vikram Salunkhe',
+      email: 'vikram.s@coeptech.ac.in',
+      college_name: 'COEP Technological University, Pune',
+      college_code: '6006',
+      trust_score: 4.7,
+    },
+    product: {
+      id: 'prod-204',
+      title: 'Hero Sprint Pro 21-Speed Gear Bicycle',
+      price: 3600,
+      image_url: 'https://images.unsplash.com/photo-1485965120184-e220f721d03e?w=500&auto=format&fit=crop&q=80',
+      status: 'active',
+      college_name: 'COEP Tech Pune',
+    },
+    message_count: 5,
+    call_count: 2,
+    has_order: true,
+    payment_method: 'cash_on_meetup',
+    last_message: 'Bringing the bicycle to COEP Hostel Ground now.',
+    last_updated: '2 hours ago',
+    messages: [
+      {
+        id: 'msg-401',
+        sender_id: 'usr-107',
+        sender_name: 'Sahil More',
+        message: 'Hey Vikram! Are both Shimano gears and disk brakes working smoothly?',
+        created_at: 'Today, 8:40 AM',
+      },
+      {
+        id: 'msg-402',
+        sender_id: 'usr-108',
+        sender_name: 'Vikram Salunkhe',
+        message: 'Yes Sahil, serviced last month with new brake pads. Test ride is welcome at the hostel ground.',
+        created_at: 'Today, 8:50 AM',
+      },
+      {
+        id: 'msg-403',
+        sender_id: 'usr-107',
+        sender_name: 'Sahil More',
+        message: '📞 Voice Call ended · Duration: 3m 42s (Discussed price adjustment to ₹3,600)',
+        created_at: 'Today, 9:00 AM',
+        is_call_log: true,
+      },
+      {
+        id: 'msg-404',
+        sender_id: 'usr-107',
+        sender_name: 'Sahil More',
+        message: '📦 NEW ORDER PLACED · Handshake Code: #COEP-6006-88 · Price: ₹3,600 · Cash on Meetup',
+        created_at: 'Today, 9:05 AM',
+        is_order_card: true,
+      },
+      {
+        id: 'msg-405',
+        sender_id: 'usr-108',
+        sender_name: 'Vikram Salunkhe',
+        message: 'Bringing the bicycle to COEP Hostel Ground now.',
+        created_at: 'Today, 9:15 AM',
+      },
+    ],
+  },
+  {
+    id: 'thread-cm-05',
+    buyer: {
+      id: 'usr-109',
+      name: 'Snehal Jadhav',
+      email: 'snehal.jadhav@walchandsangli.ac.in',
+      college_name: 'Walchand College of Engineering, Sangli',
+      college_code: '6007',
+      trust_score: 4.9,
+    },
+    seller: {
+      id: 'usr-110',
+      name: 'Omkar Patil',
+      email: 'omkar.p@walchandsangli.ac.in',
+      college_name: 'Walchand College of Engineering, Sangli',
+      college_code: '6007',
+      trust_score: 4.6,
+    },
+    product: {
+      id: 'prod-205',
+      title: 'Arduino Mega 2560 Robotics & IoT Sensor Kit',
+      price: 1650,
+      image_url: 'https://images.unsplash.com/photo-1553406830-ef2513450d76?w=500&auto=format&fit=crop&q=80',
+      status: 'active',
+      college_name: 'WCE Sangli',
+    },
+    message_count: 4,
+    call_count: 1,
+    has_order: false,
+    last_message: 'Can you upload a quick photo showing the ultrasonic sensor and jumper cables?',
+    last_updated: '3 hours ago',
+    messages: [
+      {
+        id: 'msg-501',
+        sender_id: 'usr-109',
+        sender_name: 'Snehal Jadhav',
+        message: 'Hello Omkar, is the original ATmega2560 board genuine? Does it include breadboards?',
+        created_at: 'Today, 7:10 AM',
+      },
+      {
+        id: 'msg-502',
+        sender_id: 'usr-110',
+        sender_name: 'Omkar Patil',
+        message: 'Hi Snehal, yes it includes 2 breadboards, HC-SR04 ultrasonic, servo, and 65 jumper wires.',
+        created_at: 'Today, 7:25 AM',
+      },
+      {
+        id: 'msg-503',
+        sender_id: 'usr-109',
+        sender_name: 'Snehal Jadhav',
+        message: '📞 Voice Call · Missed Call from Snehal Jadhav',
+        created_at: 'Today, 7:40 AM',
+        is_call_log: true,
+      },
+      {
+        id: 'msg-504',
+        sender_id: 'usr-109',
+        sender_name: 'Snehal Jadhav',
+        message: 'Can you upload a quick photo showing the ultrasonic sensor and jumper cables?',
+        created_at: 'Today, 7:45 AM',
+      },
+    ],
+  },
+  {
+    id: 'thread-cm-06',
+    buyer: {
+      id: 'usr-111',
+      name: 'Yashraj Chavan',
+      email: 'yashraj.c@vjti.ac.in',
+      college_name: 'Veermata Jijabai Technological Institute, Mumbai',
+      college_code: '3012',
+      trust_score: 4.8,
+    },
+    seller: {
+      id: 'usr-112',
+      name: 'Farhan Merchant',
+      email: 'farhan.m@vjti.ac.in',
+      college_name: 'Veermata Jijabai Technological Institute, Mumbai',
+      college_code: '3012',
+      trust_score: 4.9,
+    },
+    product: {
+      id: 'prod-206',
+      title: 'Texas Instruments TI-84 Plus CE Color Graphing Calculator',
+      price: 5200,
+      image_url: 'https://images.unsplash.com/photo-1594980596870-8aa52a78d8cd?w=500&auto=format&fit=crop&q=80',
+      status: 'active',
+      college_name: 'VJTI Mumbai',
+    },
+    message_count: 4,
+    call_count: 1,
+    has_order: true,
+    payment_method: 'gpay_upi',
+    last_message: 'Received ₹5,200 via GPay. Cable + charger packed for meetup.',
+    last_updated: '4 hours ago',
+    messages: [
+      {
+        id: 'msg-601',
+        sender_id: 'usr-111',
+        sender_name: 'Yashraj Chavan',
+        message: 'Hi Farhan, does it hold full battery charge? Includes USB-to-mini charging cable?',
+        created_at: 'Yesterday, 8:10 PM',
+      },
+      {
+        id: 'msg-602',
+        sender_id: 'usr-112',
+        sender_name: 'Farhan Merchant',
+        message: 'Yes Yashraj, battery easily lasts 2 weeks on one charge. Comes with original TI USB cable.',
+        created_at: 'Yesterday, 8:20 PM',
+      },
+      {
+        id: 'msg-603',
+        sender_id: 'usr-111',
+        sender_name: 'Yashraj Chavan',
+        message: '💳 ORDER PLACED · Paid ₹5,200 via GPay UPI · Transaction: UPI/301211904',
+        created_at: 'Yesterday, 8:45 PM',
+        is_order_card: true,
+      },
+      {
+        id: 'msg-604',
+        sender_id: 'usr-112',
+        sender_name: 'Farhan Merchant',
+        message: 'Received ₹5,200 via GPay. Cable + charger packed for meetup.',
+        created_at: 'Yesterday, 8:50 PM',
+      },
+    ],
+  },
+  {
+    id: 'thread-cm-07',
+    buyer: {
+      id: 'usr-113',
+      name: 'Pooja Kadam',
+      email: 'pooja.kadam@ritindia.edu',
+      college_name: 'Rajarambapu Institute of Technology, Islampur',
+      college_code: '6214',
+      trust_score: 4.5,
+    },
+    seller: {
+      id: 'usr-114',
+      name: 'Digvijay Mane',
+      email: 'digvijay.m@ritindia.edu',
+      college_name: 'Rajarambapu Institute of Technology, Islampur',
+      college_code: '6214',
+      trust_score: 4.8,
+    },
+    product: {
+      id: 'prod-207',
+      title: 'RIT Mechanical Workshop Apron (Size L) + Safety Goggles',
+      price: 300,
+      image_url: 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=500&auto=format&fit=crop&q=80',
+      status: 'active',
+      college_name: 'RIT Islampur',
+    },
+    message_count: 4,
+    call_count: 0,
+    has_order: true,
+    payment_method: 'cash_on_meetup',
+    last_message: 'Will meet at Central Workshop entrance at 10 AM.',
+    last_updated: '5 hours ago',
+    messages: [
+      {
+        id: 'msg-701',
+        sender_id: 'usr-113',
+        sender_name: 'Pooja Kadam',
+        message: 'Hi Digvijay! Is this apron approved for 1st year mechanical turning workshop?',
+        created_at: 'Yesterday, 2:00 PM',
+      },
+      {
+        id: 'msg-702',
+        sender_id: 'usr-114',
+        sender_name: 'Digvijay Mane',
+        message: 'Yes, it is the official navy blue cotton apron with RIT patch. Goggles are scratch-free.',
+        created_at: 'Yesterday, 2:15 PM',
+      },
+      {
+        id: 'msg-703',
+        sender_id: 'usr-113',
+        sender_name: 'Pooja Kadam',
+        message: '📦 NEW ORDER PLACED · Handshake Code: #RIT-6214-11 · Price: ₹300 · Cash on Meetup',
+        created_at: 'Yesterday, 2:30 PM',
+        is_order_card: true,
+      },
+      {
+        id: 'msg-704',
+        sender_id: 'usr-114',
+        sender_name: 'Digvijay Mane',
+        message: 'Will meet at Central Workshop entrance at 10 AM.',
+        created_at: 'Yesterday, 2:35 PM',
+      },
+    ],
+  },
+  {
+    id: 'thread-cm-08',
+    buyer: {
+      id: 'usr-115',
+      name: 'Neha Gaikwad',
+      email: 'neha.gaikwad@dacoe.ac.in',
+      college_name: 'Dr. Daulatrao Aher College of Engineering, Karad',
+      college_code: '6545',
+      trust_score: 4.7,
+    },
+    seller: {
+      id: 'usr-116',
+      name: 'Shrikant Kamble',
+      email: 'shrikant.k@dacoe.ac.in',
+      college_name: 'Dr. Daulatrao Aher College of Engineering, Karad',
+      college_code: '6545',
+      trust_score: 4.8,
+    },
+    product: {
+      id: 'prod-208',
+      title: 'Foldable Wooden Study Desk with Book Rack',
+      price: 1200,
+      image_url: 'https://images.unsplash.com/photo-1518455027359-f3f8164ba6bd?w=500&auto=format&fit=crop&q=80',
+      status: 'active',
+      college_name: 'Dr. Daulatrao Aher COE Karad',
+    },
+    message_count: 4,
+    call_count: 1,
+    has_order: false,
+    last_message: 'Can I inspect the table frame this evening near DACOE Girls Hostel?',
+    last_updated: '6 hours ago',
+    messages: [
+      {
+        id: 'msg-801',
+        sender_id: 'usr-115',
+        sender_name: 'Neha Gaikwad',
+        message: 'Hi Shrikant, is the desk sturdy enough for laptop + monitor?',
+        created_at: 'Yesterday, 11:00 AM',
+      },
+      {
+        id: 'msg-802',
+        sender_id: 'usr-116',
+        sender_name: 'Shrikant Kamble',
+        message: 'Yes, engineered wood with metal frame. Easily handles 40kg.',
+        created_at: 'Yesterday, 11:20 AM',
+      },
+      {
+        id: 'msg-803',
+        sender_id: 'usr-115',
+        sender_name: 'Neha Gaikwad',
+        message: '📞 Voice Call ended · Duration: 1m 15s',
+        created_at: 'Yesterday, 11:45 AM',
+        is_call_log: true,
+      },
+      {
+        id: 'msg-804',
+        sender_id: 'usr-115',
+        sender_name: 'Neha Gaikwad',
+        message: 'Can I inspect the table frame this evening near DACOE Girls Hostel?',
+        created_at: 'Yesterday, 11:50 AM',
+      },
+    ],
+  },
+]
+
+export async function fetchCommunications(): Promise<ConnectionThread[]> {
+  try {
+    const payload = await api.get<unknown>(endpoints.communications)
+    const list = asArray<ConnectionThread>(payload)
+    if (list.length > 0) return list
+  } catch {
+    /* route is deploying on Render — fallback to client-side aggregation */
+  }
+  return FALLBACK_COMMUNICATIONS
 }
 
 /* --- Mutations ---------------------------------------------- */

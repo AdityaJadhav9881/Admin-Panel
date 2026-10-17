@@ -8,10 +8,90 @@
    HTTP round-trip measurements (no placeholder readings).
    ============================================================ */
 
-export type ViewId = 'overview' | 'listings' | 'users' | 'settings'
+export type ViewId = 'overview' | 'listings' | 'users' | 'connections' | 'settings'
 export type UserStatus = 'active' | 'blocked'
 export type StatusTone = 'success' | 'warning' | 'critical' | 'neutral'
 export type ServiceState = 'operational' | 'degraded' | 'unavailable' | 'pending'
+
+export interface CollegeInfo {
+  name: string
+  shortName: string
+  code: string
+  city: string
+  accentColor?: string
+}
+
+export const MAHARASHTRA_COLLEGES: CollegeInfo[] = [
+  {
+    name: 'Government College of Engineering, Karad',
+    shortName: 'GCOE Karad',
+    code: '6004',
+    city: 'Karad',
+  },
+  {
+    name: 'Dr. Daulatrao Aher College of Engineering, Karad',
+    shortName: 'Dr. Daulatrao Aher COE Karad',
+    code: '6545',
+    city: 'Karad',
+  },
+  {
+    name: 'AISSMS Institute of Information Technology, Pune',
+    shortName: 'AISSMS IOIT Pune',
+    code: '6282',
+    city: 'Pune',
+  },
+  {
+    name: 'COEP Technological University, Pune',
+    shortName: 'COEP Tech Pune',
+    code: '6006',
+    city: 'Pune',
+  },
+  {
+    name: 'Walchand College of Engineering, Sangli',
+    shortName: 'WCE Sangli',
+    code: '6007',
+    city: 'Sangli',
+  },
+  {
+    name: 'Pune Institute of Computer Technology, Pune',
+    shortName: 'PICT Pune',
+    code: '6271',
+    city: 'Pune',
+  },
+  {
+    name: 'Veermata Jijabai Technological Institute, Mumbai',
+    shortName: 'VJTI Mumbai',
+    code: '3012',
+    city: 'Mumbai',
+  },
+  {
+    name: 'Rajarambapu Institute of Technology, Islampur',
+    shortName: 'RIT Islampur',
+    code: '6214',
+    city: 'Islampur',
+  },
+  {
+    name: "Kolhapur Institute of Technology's College of Engineering",
+    shortName: "KIT's COE Kolhapur",
+    code: '6267',
+    city: 'Kolhapur',
+  },
+]
+
+export function inferCollege(idOrEmailOrSeed: string): CollegeInfo {
+  const seed = String(idOrEmailOrSeed || 'campus').toLowerCase()
+  let hash = 0
+  for (let i = 0; i < seed.length; i++) {
+    hash = (hash * 31 + seed.charCodeAt(i)) >>> 0
+  }
+  return MAHARASHTRA_COLLEGES[hash % MAHARASHTRA_COLLEGES.length]
+}
+
+export function formatCollegeBadge(collegeName?: string, collegeCode?: string): string {
+  const name = collegeName || 'GCOE Karad'
+  const code = collegeCode ? ` · CET ${collegeCode}` : ''
+  return `🎓 ${name}${code}`
+}
 
 export interface User {
   id: string
@@ -21,6 +101,8 @@ export interface User {
   status: UserStatus
   joined: string
   listings: number
+  collegeName?: string
+  collegeCode?: string
 }
 
 export interface FlaggedTransaction {
@@ -212,6 +294,8 @@ export interface Listing {
   aiConditionNotes: string | null
   listed: string
   flag: ListingFlag | null
+  collegeName?: string
+  collegeCode?: string
 }
 
 /** Trust-score cost applied to the seller when a listing is deleted (0–5 scale). */

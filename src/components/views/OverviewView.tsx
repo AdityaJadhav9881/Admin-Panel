@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import type {
   Agent,
   FlaggedTransaction,
   Listing,
   OverviewMetrics,
   Service,
+  User,
   ViewId,
 } from '../../data/mock'
 import {
@@ -36,6 +37,7 @@ interface OverviewViewProps {
   services: Service[]
   probing: boolean
   listings?: Listing[]
+  users?: User[]
   onNavigate: (view: ViewId) => void
   onAcknowledge: (id: string) => void
   onRunProbes: () => void
@@ -48,6 +50,7 @@ export function OverviewView({
   services,
   probing,
   listings = [],
+  users = [],
   onNavigate,
   onAcknowledge,
   onRunProbes,
@@ -68,6 +71,37 @@ export function OverviewView({
     acc[item.category] = (acc[item.category] ?? 0) + 1
     return acc
   }, {})
+
+  // Campus distribution calculation across users and listings
+  const campusDistribution = useMemo(() => {
+    const map = new Map<string, { name: string; code: string; studentCount: number; listingCount: number }>()
+
+    for (const u of users) {
+      const name = u.collegeName || 'Government College of Engineering, Karad'
+      const code = u.collegeCode || '6004'
+      const existing = map.get(name)
+      if (existing) {
+        existing.studentCount++
+      } else {
+        map.set(name, { name, code, studentCount: 1, listingCount: 0 })
+      }
+    }
+
+    for (const l of listings) {
+      const name = l.collegeName || 'Government College of Engineering, Karad'
+      const code = l.collegeCode || '6004'
+      const existing = map.get(name)
+      if (existing) {
+        existing.listingCount++
+      } else {
+        map.set(name, { name, code, studentCount: 0, listingCount: 1 })
+      }
+    }
+
+    return Array.from(map.values()).sort(
+      (a, b) => b.studentCount + b.listingCount - (a.studentCount + a.listingCount),
+    )
+  }, [users, listings])
 
   const scrollToQueue = () => {
     document.getElementById('flag-queue')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -209,6 +243,57 @@ export function OverviewView({
         </Panel>
 
         <div className="space-y-6">
+          {/* Top Active Campuses (CET Cell Network) */}
+          <Panel
+            title="Top Active Campuses (CET Cell Network)"
+            caption="Student presence & listing density across Maharashtra engineering colleges."
+            action={
+              <Badge tone="brand">
+                {campusDistribution.length} Campuses Active
+              </Badge>
+            }
+          >
+            <div className="p-5 space-y-3.5">
+              {campusDistribution.slice(0, 5).map((campus, idx) => {
+                const totalActivity = users.length + listings.length
+                const campusActivity = campus.studentCount + campus.listingCount
+                const pct = totalActivity > 0 ? Math.round((campusActivity / totalActivity) * 100) : 0
+                return (
+                  <div key={campus.name} className="space-y-1.5">
+                    <div className="flex items-center justify-between gap-2 text-[12.5px]">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="font-semibold text-brand">#{idx + 1}</span>
+                        <span className="font-medium text-ink truncate" title={campus.name}>
+                          {campus.name}
+                        </span>
+                        <span className="shrink-0 text-[11px] font-mono text-ink-faint">
+                          CET {campus.code}
+                        </span>
+                      </div>
+                      <div className="shrink-0 text-right text-[12px] text-ink-muted">
+                        <span className="font-medium text-ink">{campus.studentCount}</span> students ·{' '}
+                        <span className="font-medium text-ink">{campus.listingCount}</span> listings
+                      </div>
+                    </div>
+                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-2">
+                      <div
+                        className="h-full rounded-full bg-brand transition-all duration-300"
+                        style={{ width: `${Math.max(pct, 6)}%` }}
+                      />
+                    </div>
+                  </div>
+                )
+              })}
+
+              <div className="border-t border-line pt-3 flex items-center justify-between text-[12px]">
+                <span className="text-ink-muted">Explore college student directories:</span>
+                <Button variant="outline" className="h-7 px-2.5 text-[11.5px]" onClick={() => onNavigate('users')}>
+                  Browse Campus Hubs
+                </Button>
+              </div>
+            </div>
+          </Panel>
+
           {/* Marketplace Value Summary — Level 2 financial intelligence */}
           <Panel
             title="Marketplace value summary"
