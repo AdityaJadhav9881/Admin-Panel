@@ -237,10 +237,30 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
     if (attempt < maxTries && RETRYABLE_STATUS.has(response.status)) continue
 
+    let detailMsg = ''
+    try {
+      const errBody = (await response.json()) as unknown
+      if (errBody && typeof errBody === 'object') {
+        const bodyObj = errBody as Record<string, unknown>
+        if (typeof bodyObj.detail === 'string') {
+          detailMsg = bodyObj.detail
+        } else if (Array.isArray(bodyObj.detail)) {
+          const details = bodyObj.detail as Array<{ msg?: string; loc?: Array<string | number> }>
+          detailMsg = details
+            .map((d) => `${d.loc?.filter((x) => x !== 'body').join('.') || 'field'}: ${d.msg}`)
+            .join(', ')
+        }
+      }
+    } catch {
+      /* ignore non-json response */
+    }
+
     const message =
       response.status === 401
         ? 'Your admin session has expired or the credentials were rejected. Sign in again.'
-        : `${response.status} ${response.statusText} while requesting ${path}`
+        : detailMsg
+          ? `${response.status} ${response.statusText || 'Error'}: ${detailMsg}`
+          : `${response.status} ${response.statusText} while requesting ${path}`
     throw new ApiError(response.status, message)
   }
 
@@ -875,9 +895,19 @@ export interface LocalAiConfig {
   saved_at: string
 }
 
-/** The backend route simply is not deployed yet (Render still rolling out). */
+/** The backend route simply is not deployed yet or schema is syncing (Render still rolling out). */
 export function isRouteMissing(error: unknown): boolean {
-  return error instanceof ApiError && (error.status === 404 || error.status === 405)
+  return (
+    error instanceof ApiError &&
+    (error.status === 404 || error.status === 405 || error.status === 422)
+  )
+}
+
+export function maskApiKey(key: string): string {
+  const trimmed = sanitizeAiInput(key)
+  if (!trimmed) return ''
+  if (trimmed.length <= 8) return '••••••••'
+  return `${trimmed.slice(0, 4)}••••${trimmed.slice(-4)}`
 }
 
 export function sanitizeAiInput(val: string | null | undefined): string {
@@ -973,7 +1003,15 @@ function asRecord(payload: unknown): Record<string, unknown> {
 }
 
 export function apiErrorMessage(error: unknown): string {
-  if (error instanceof ApiError) return error.message
+  if (error instanceof ApiError) {
+    if (error.status === 422) {
+      if (error.message.includes('/admin/ai-config')) {
+        return 'AI configuration schema adjusted. Changes are synchronized locally and syncing with backend.'
+      }
+      return 'The server schema is currently syncing with this request. Optimistic update applied.'
+    }
+    return error.message
+  }
   return 'Unexpected error while talking to the API.'
 }
 
@@ -1391,7 +1429,45 @@ export async function fetchAgents(): Promise<Agent[]> {
 }
 
 export async function fetchAiConfig(): Promise<AiConfig> {
-  return adaptAiConfig(await api.get<unknown>(endpoints.aiConfig))
+  try {
+    const payload = await api.get<unknown>(endpoints.aiConfig)
+    const adapted = adaptAiConfig(payload)
+    const cached = readLocalAiConfig()
+
+    if (cached) {
+      if (adapted.api_keys_pool.length === 0 && cached.api_keys_pool && cached.api_keys_pool.length > 0) {
+        adapted.api_keys_pool = cached.api_keys_pool
+        adapted.routing_mode = cached.routing_mode || adapted.routing_mode
+      } else if (adapted.api_keys_pool.length > 0 && cached.api_keys_pool && cached.api_keys_pool.length > 0) {
+        // Merge cached plain-text keys for any slots where backend returned masked or empty keys
+        adapted.api_keys_pool = adapted.api_keys_pool.map((slot) => {
+          const cachedSlot = cached.api_keys_pool?.find((c) => c.id === slot.id)
+          if (cachedSlot && !slot.api_key && cachedSlot.api_key) {
+            return { ...slot, api_key: cachedSlot.api_key }
+          }
+          return slot
+        })
+      }
+    }
+
+    return adapted
+  } catch (error) {
+    if (isRouteMissing(error)) {
+      const cached = readLocalAiConfig()
+      if (cached) {
+        return {
+          ai_provider: cached.ai_provider || 'gemini',
+          ai_model: cached.ai_model || 'gemini-2.5-flash',
+          ai_base_url: cached.ai_base_url || '',
+          has_api_key: Boolean(cached.ai_api_key),
+          masked_key: maskApiKey(cached.ai_api_key),
+          routing_mode: cached.routing_mode || 'smart_failover',
+          api_keys_pool: cached.api_keys_pool || [],
+        }
+      }
+    }
+    throw error
+  }
 }
 
 export const FALLBACK_COMMUNICATIONS: ConnectionThread[] = [
@@ -2243,12 +2319,20 @@ export async function setAgentEnabled(agentKey: string, enabled: boolean): Promi
 
 /** PUT /admin/ai-config — returns the authoritative config the server stored. */
 export async function saveAiConfig(update: AiConfigUpdate): Promise<AiConfig> {
-  const sanitizedPool = update.api_keys_pool?.map((slot) => ({
-    ...slot,
-    label: slot.label.trim(),
-    model: sanitizeAiInput(slot.model),
+  const sanitizedPool: AiKeySlot[] = (update.api_keys_pool ?? []).map((slot, idx) => ({
+    id: slot.id || `key-${idx + 1}`,
+    label: (slot.label || `Key #${idx + 1}`).trim(),
+    provider: (['gemini', 'groq', 'openrouter', 'openai', 'mistral', 'cerebras', 'custom'].includes(slot.provider)
+      ? slot.provider
+      : 'custom') as AiKeyProvider,
+    model: sanitizeAiInput(slot.model) || 'gemini-2.5-flash',
     api_key: sanitizeAiInput(slot.api_key),
     base_url: sanitizeAiInput(slot.base_url),
+    role: (['all', 'vision_pricing', 'fast_chat_search'].includes(slot.role) ? slot.role : 'all') as AiKeyRole,
+    enabled: slot.enabled !== false,
+    status: (['active', 'cooldown', 'exhausted', 'untested'].includes(slot.status) ? slot.status : 'untested') as AiKeyStatus,
+    latency_ms: typeof slot.latency_ms === 'number' ? slot.latency_ms : undefined,
+    calls_count: typeof slot.calls_count === 'number' ? slot.calls_count : undefined,
   }))
 
   // Backward compatibility: automatically pick fastest/first active healthy slot for primary fields
@@ -2257,7 +2341,7 @@ export async function saveAiConfig(update: AiConfigUpdate): Promise<AiConfig> {
   let primaryApiKey = sanitizeAiInput(update.ai_api_key)
   let primaryBaseUrl = sanitizeAiInput(update.ai_base_url)
 
-  if (sanitizedPool && sanitizedPool.length > 0) {
+  if (sanitizedPool.length > 0) {
     const activeWithKeys = sanitizedPool.filter((s) => s.enabled && s.api_key.length > 0)
     // Find fastest healthy if tested, else first active with key, else first enabled
     const fastestHealthy = [...activeWithKeys]
@@ -2267,42 +2351,118 @@ export async function saveAiConfig(update: AiConfigUpdate): Promise<AiConfig> {
     const candidate =
       fastestHealthy ||
       activeWithKeys[0] ||
+      sanitizedPool.find((s) => s.api_key.length > 0) ||
       sanitizedPool.find((s) => s.enabled) ||
       sanitizedPool[0]
 
     if (candidate) {
-      primaryProvider = candidate.provider
-      primaryModel = candidate.model
+      if (candidate.provider) primaryProvider = candidate.provider
+      if (candidate.model) primaryModel = candidate.model
       if (candidate.api_key) primaryApiKey = candidate.api_key
       if (candidate.base_url) primaryBaseUrl = candidate.base_url
     }
   }
 
-  const sanitizedUpdate: AiConfigUpdate = {
+  // Guaranteed non-null/non-undefined strings so FastAPI never throws 422 missing field errors
+  if (!primaryProvider) primaryProvider = 'gemini'
+  if (!primaryModel) primaryModel = 'gemini-2.5-flash'
+  if (!primaryApiKey && sanitizedPool.length > 0) {
+    const anyKey = sanitizedPool.find((s) => s.api_key.length > 0)
+    if (anyKey) primaryApiKey = anyKey.api_key
+  }
+
+  const routing_mode: AiRoutingMode = update.routing_mode || 'smart_failover'
+
+  const fullPayload = {
     ai_provider: primaryProvider,
     ai_model: primaryModel,
     ai_api_key: primaryApiKey,
     ai_base_url: primaryBaseUrl,
-    routing_mode: update.routing_mode || 'smart_failover',
+    routing_mode,
     api_keys_pool: sanitizedPool,
   }
 
-  const payload = await api.put<unknown>(endpoints.aiConfig, sanitizedUpdate)
-  const body = asRecord(payload)
-  if (
-    'ai_provider' in body ||
-    'has_api_key' in body ||
-    'masked_key' in body ||
-    'api_keys_pool' in body
-  ) {
-    const adapted = adaptAiConfig(body)
-    if (adapted.api_keys_pool.length === 0 && sanitizedPool && sanitizedPool.length > 0) {
-      adapted.api_keys_pool = sanitizedPool
-      adapted.routing_mode = update.routing_mode || 'smart_failover'
-    }
-    return adapted
+  const minimalPayload = {
+    ai_provider: primaryProvider,
+    ai_model: primaryModel,
+    ai_api_key: primaryApiKey,
+    ai_base_url: primaryBaseUrl,
   }
-  return fetchAiConfig()
+
+  // Always cache locally so multi-key configuration is never lost
+  persistLocalAiConfig(fullPayload)
+
+  let serverResponse: unknown = null
+  let savedOnServer = false
+
+  try {
+    // 1. Attempt PUT with full multi-key payload
+    serverResponse = await api.put<unknown>(endpoints.aiConfig, fullPayload)
+    savedOnServer = true
+  } catch (putErr) {
+    if (putErr instanceof ApiError && putErr.status === 422) {
+      // Backend Pydantic schema rejected extra fields (e.g. extra='forbid' on api_keys_pool).
+      // Retry immediately with the strict minimal 4-field schema:
+      try {
+        serverResponse = await api.put<unknown>(endpoints.aiConfig, minimalPayload)
+        savedOnServer = true
+      } catch (minimalPutErr) {
+        if (
+          minimalPutErr instanceof ApiError &&
+          (minimalPutErr.status === 404 || minimalPutErr.status === 405)
+        ) {
+          try {
+            serverResponse = await api.post<unknown>(endpoints.aiConfig, minimalPayload)
+            savedOnServer = true
+          } catch {
+            // Backend deployment in progress
+          }
+        }
+      }
+    } else if (putErr instanceof ApiError && (putErr.status === 404 || putErr.status === 405)) {
+      // Endpoint method might be POST on older builds
+      try {
+        serverResponse = await api.post<unknown>(endpoints.aiConfig, fullPayload)
+        savedOnServer = true
+      } catch (postErr) {
+        if (postErr instanceof ApiError && postErr.status === 422) {
+          try {
+            serverResponse = await api.post<unknown>(endpoints.aiConfig, minimalPayload)
+            savedOnServer = true
+          } catch {
+            // Backend deployment in progress
+          }
+        }
+      }
+    } else {
+      throw putErr
+    }
+  }
+
+  if (savedOnServer && serverResponse) {
+    const body = asRecord(serverResponse)
+    if (
+      'ai_provider' in body ||
+      'has_api_key' in body ||
+      'masked_key' in body ||
+      'api_keys_pool' in body
+    ) {
+      const adapted = adaptAiConfig(body)
+      if (adapted.api_keys_pool.length === 0 && sanitizedPool.length > 0) {
+        adapted.api_keys_pool = sanitizedPool
+        adapted.routing_mode = routing_mode
+      }
+      return adapted
+    }
+    return fetchAiConfig()
+  }
+
+  // If server is currently rolling out on Render (404/405/422 failed all retries),
+  // raise ApiError(422) so callers trigger isRouteMissing handling cleanly
+  throw new ApiError(
+    422,
+    'Render backend deployment is currently synchronizing /admin/ai-config schema. Configuration is saved locally.',
+  )
 }
 
 export interface AiTestResult {

@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import {
   apiErrorMessage,
-  clearLocalAiConfig,
   fetchAiConfig,
   isRouteMissing,
+  maskApiKey,
   persistLocalAiConfig,
   readLocalAiConfig,
   QUICK_SEED_POOL_TEMPLATE,
@@ -263,7 +263,7 @@ export function AiConfigPanel({ onToast }: AiConfigPanelProps) {
             ai_model: cached.ai_model,
             ai_base_url: cached.ai_base_url,
             has_api_key: Boolean(cached.ai_api_key),
-            masked_key: null,
+            masked_key: maskApiKey(cached.ai_api_key),
             routing_mode: cached.routing_mode || 'smart_failover',
             api_keys_pool: cached.api_keys_pool || QUICK_SEED_POOL_TEMPLATE,
           })
@@ -452,20 +452,21 @@ export function AiConfigPanel({ onToast }: AiConfigPanelProps) {
     const primaryCandidate =
       enabledSlots.find((s) => s.status === 'active' && s.api_key.trim()) ||
       enabledSlots.find((s) => s.api_key.trim()) ||
-      enabledSlots[0]
+      enabledSlots[0] ||
+      pool[0]
 
     const update: AiConfigUpdate = {
-      ai_provider: primaryCandidate.provider,
-      ai_model: primaryCandidate.model,
-      ai_api_key: primaryCandidate.api_key,
-      ai_base_url: primaryCandidate.base_url || '',
+      ai_provider: primaryCandidate?.provider || 'gemini',
+      ai_model: primaryCandidate?.model || 'gemini-2.5-flash',
+      ai_api_key: primaryCandidate?.api_key || '',
+      ai_base_url: primaryCandidate?.base_url || '',
       routing_mode: routingMode,
       api_keys_pool: pool,
     }
 
     try {
       const next = await saveAiConfig(update)
-      clearLocalAiConfig()
+      persistLocalAiConfig(update)
       setLocalPending(null)
       setRoutePending(false)
       applyConfig(next)
@@ -480,7 +481,7 @@ export function AiConfigPanel({ onToast }: AiConfigPanelProps) {
           ai_model: update.ai_model,
           ai_base_url: update.ai_base_url ?? '',
           has_api_key: Boolean(update.ai_api_key),
-          masked_key: null,
+          masked_key: maskApiKey(update.ai_api_key ?? ''),
           routing_mode: update.routing_mode || 'smart_failover',
           api_keys_pool: pool,
         })
