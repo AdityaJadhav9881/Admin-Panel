@@ -1,6 +1,6 @@
 # HANDOFF — CampusMart AI Master Control (context for next session)
 
-_Last updated: 2026-10-17 (post-implementation of Live GET /admin/communications API Integration, Complete Elimination of Mock Student Data, Universal Adapter `adaptConnectionThread`, Clean Zero-Mock Empty States, and Zero-Config AI Configuration Engine). Read this file first in a new session; it is the authoritative, full state snapshot._
+_Last updated: 2026-10-18 (post-implementation of Live GET /admin/communications API Integration, Complete Elimination of Mock Student Data, Universal Adapter `adaptConnectionThread`, Comprehensive Student Study Guide `STUDENT_STUDY_GUIDE.md`, and Zero-Config AI Configuration Engine). Read this file first in a new session; it is the authoritative, full state snapshot._
 
 ## 1. Project
 
@@ -24,7 +24,9 @@ _Last updated: 2026-10-17 (post-implementation of Live GET /admin/communications
   - `16ff3f` Manage "Want to Buy" (WTB) Board, Seller Matching Engine, and Academic Branch/Year Moderation
   - `7bbf30d` Desktop & Mobile UI/UX Overhaul: Universal College Formatter, Table-Fixed Colgroup Layouts, Responsive Cards, and Mobile Quick-Nav
   - `f20e3bf` Zero-Config AI Configuration Engine: Streamlined Key-Only Slots, Auto-Detect Provider & Working Model Discovery (`POST /admin/ai-config/test-key`)
-  - `[current]` Wire ConnectionsView to live GET /admin/communications API and eliminate static mock student data
+  - `5d4337c` Wire ConnectionsView to live GET /admin/communications API and eliminate static mock student data
+  - `9542f57` Add comprehensive student study guide and exam viva preparation manual (`STUDENT_STUDY_GUIDE.md`)
+  - `[current]` Update HANDOFF with latest commits, study guide documentation, and operational snapshot
 - **Stack**: React 19 + TypeScript ~6.0 + Vite 8 + Tailwind v4 (`@tailwindcss/vite`), linting via `oxlint` (`.oxlintrc.json`: `react/rules-of-hooks: error`, `react/only-export-components: warn`).
 - **tsconfig constraints**: `noUnusedLocals`, `noUnusedParameters`, `erasableSyntaxOnly` (no constructor parameter properties), `"types": ["vite/client"]`.
 - **Reference docs**: two philosophy `.txt` files in the project root (INFINITY DESIGN). Key principles applied throughout: neutral foundation, controlled accent, semantic color, progressive disclosure, no dead ends, honest data labelling (placeholder values are always labelled as such).
@@ -107,6 +109,7 @@ npm run dev         # vite dev server
 | `src/components/settings/AdminProfilePanel.tsx` | Authorized administrator profile management, session overview, and local/backend password change form |
 | `src/components/ui/ConnectingBox.tsx` | Cold-start status box with progress bar and elapsed timer |
 | `src/components/ui/*` | `Button`, `Badge`, `Toggle`, `Panel`, `MetricCard`, `ConfirmDialog`, `Toast`, `ServiceRow` |
+| `STUDENT_STUDY_GUIDE.md` | **Master Engineering Student Study Guide & Viva Exam Preparation Manual**: 700+ line textbook covering React 19, TypeScript 6, Tailwind v4, REST conventions, JWT auth, cold-start transport engineering, Multi-Key AI Load Balancing, and Top 30 university viva Q&A |
 
 ## 4. Design Tokens (src/index.css `@theme`)
 
